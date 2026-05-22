@@ -258,6 +258,42 @@ def test_default_real_boundary_allows_external_repo_cache_dir(tmp_path: Path) ->
     assert not proof.trace_outside_writes
 
 
+def test_default_real_boundary_allows_runtime_scratch_roots(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_root = tmp_path / "workspace" / "runs" / "run-1"
+    production_config = tmp_path / "workspace" / "oco-production-config"
+    bun_install = tmp_path / "workspace" / ".bun"
+    run_root.mkdir(parents=True)
+    production_config.mkdir()
+    bun_install.mkdir()
+    monkeypatch.setenv("BUN_INSTALL", str(bun_install))
+
+    config = default_real_boundary_config(
+        run_root=run_root,
+        production_config_dir=production_config,
+        project_root=PROJECT_ROOT,
+    )
+
+    assert Path("/tmp").resolve() in config.trace_allowed_roots
+    assert Path("/tmp").resolve() not in config.allowed_roots
+    assert bun_install.resolve() in config.allowed_roots
+
+    monitor = BoundaryMonitor(config)
+    monitor.start()
+    atomic_write_text(bun_install / "runtime-cache-file", "allowed cache\n")
+    atomic_write_text(
+        run_root / "filesystem-trace.log",
+        f'123 openat(AT_FDCWD, "{bun_install / "runtime-cache-file"}", O_WRONLY|O_CREAT, 0600) = 3\n'
+        '124 openat(AT_FDCWD, "/tmp/go-test-rpc-flipt.log", O_WRONLY|O_CREAT, 0600) = 4\n',
+    )
+
+    proof = monitor.finish(run_root / "boundary-proof.md")
+
+    assert not proof.outside_changes
+    assert not proof.trace_outside_writes
+
+
 def test_controller_default_boundary_wires_in_repo_cache_manager(
     tmp_path: Path,
 ) -> None:

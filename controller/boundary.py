@@ -15,6 +15,7 @@ from controller.atomic import atomic_write_text
 class BoundaryConfig:
     protected_roots: tuple[Path, ...]
     allowed_roots: tuple[Path, ...]
+    trace_allowed_roots: tuple[Path, ...] = ()
     monitored_roots: tuple[Path, ...] = ()
     require_trace: bool = False
 
@@ -194,6 +195,12 @@ def _under_any(path: Path, roots: tuple[Path, ...]) -> bool:
     return any(path == root or path.is_relative_to(root) for root in roots)
 
 
+def _all_allowed_roots(config: BoundaryConfig) -> tuple[Path, ...]:
+    return tuple(
+        path.resolve() for path in (*config.allowed_roots, *config.trace_allowed_roots)
+    )
+
+
 WRITE_FLAG_PATTERN = re.compile(r"O_(?:WRONLY|RDWR|CREAT|TRUNC|APPEND)")
 WRITE_SYSCALL_PATTERN = re.compile(
     r"\b(?:creat|mkdir|mkdirat|rename|renameat|renameat2|unlink|unlinkat|rmdir|symlink|symlinkat|link|linkat)\("
@@ -211,7 +218,7 @@ FD_PATH_PATTERN = re.compile(r"^(?P<fd>\d+)<(?P<path>[^>]+)>$")
 def classify_trace_outside_writes(
     trace_path: Path, config: BoundaryConfig
 ) -> list[str]:
-    allowed = tuple(path.resolve() for path in config.allowed_roots)
+    allowed = _all_allowed_roots(config)
     outside: set[str] = set()
     fd_dirs: dict[str, dict[int, Path]] = {}
     for line in trace_path.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -485,12 +492,20 @@ def default_real_boundary_config(
             production_config_dir,
         )
     )
+    runtime_tree_roots, runtime_trace_roots = _runtime_scratch_roots(
+        project_root=project_root
+    )
     allowed = _dedupe_roots(
-        (run_root,) if repo_cache_dir is None else (run_root, repo_cache_dir)
+        tuple(
+            root
+            for root in (run_root, repo_cache_dir, *runtime_tree_roots)
+            if root is not None
+        )
     )
     return BoundaryConfig(
         protected_roots=(oco_source, production_config_dir),
         allowed_roots=allowed,
+        trace_allowed_roots=_dedupe_roots(runtime_trace_roots),
         monitored_roots=monitored,
         require_trace=True,
     )
@@ -506,6 +521,26 @@ def _dedupe_roots(roots: tuple[Path, ...]) -> tuple[Path, ...]:
         seen.add(resolved)
         result.append(resolved)
     return tuple(result)
+
+
+def _runtime_scratch_roots(
+    *, project_root: Path
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """Return benchmark-owned runtime/cache roots that are safe to allow.
+
+    The boundary proof protects OCO source and the production config from the
+    benchmarked run. It should not fail because language runtimes write scratch
+    files in the pod's temp/cache roots during normal test execution.
+    """
+    tree_roots: list[Path] = []
+    bun_install = os.environ.get("BUN_INSTALL")
+    if bun_install:
+        tree_roots.append(Path(bun_install))
+    else:
+        workspace_bun = project_root.parent / ".bun"
+        if workspace_bun.exists():
+            tree_roots.append(workspace_bun)
+    return tuple(tree_roots), (Path("/tmp"),)
 
 
 def ensure_roots_inside_project(roots: Iterable[Path], project_root: Path) -> bool:

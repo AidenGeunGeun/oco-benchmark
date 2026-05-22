@@ -15,6 +15,9 @@ from controller.atomic import atomic_write_json, atomic_write_text
 from controller.version_gate import check_oco_binary, write_gate_artifact
 
 
+EXCLUDED_UNTRACKED_PATCH_PREFIXES = ("specs/",)
+
+
 @dataclass(frozen=True)
 class RealOCORunResult:
     events: list[dict[str, Any]]
@@ -258,7 +261,10 @@ def extract_git_patch(worktree: Path, base_commit: str | None = None) -> str:
     commit, naturally including any commits the model made on top). Falls
     back to ``git diff`` (uncommitted vs HEAD) when base_commit is unknown,
     matching prior behavior for callers that don't capture a base commit.
-    Untracked files are appended individually.
+    Untracked files are appended individually, except benchmark-harness
+    planning artifacts under specs/ that Qwen prompt overlays may ask the PM
+    to create before delegating. Those specs are useful run artifacts but must
+    not be submitted to SWE-bench as part of the model patch.
     """
     if not (worktree / ".git").exists():
         return ""
@@ -284,6 +290,8 @@ def extract_git_patch(worktree: Path, base_commit: str | None = None) -> str:
     if untracked.returncode != 0:
         return patch
     for relative in [line for line in untracked.stdout.splitlines() if line.strip()]:
+        if _exclude_untracked_from_patch(relative):
+            continue
         add = subprocess.run(
             [
                 "git",
@@ -302,5 +310,12 @@ def extract_git_patch(worktree: Path, base_commit: str | None = None) -> str:
             timeout=60,
         )
         if add.stdout:
-            patch += add.stdout.replace("/dev/null", f"a/{relative}", 1)
+            patch += add.stdout
     return patch
+
+
+def _exclude_untracked_from_patch(relative: str) -> bool:
+    normalized = relative.lstrip("./")
+    return any(
+        normalized.startswith(prefix) for prefix in EXCLUDED_UNTRACKED_PATCH_PREFIXES
+    )

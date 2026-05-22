@@ -127,6 +127,10 @@ def test_extract_git_patch_captures_committed_uncommitted_and_untracked(
         "# fixture\nuncommitted edit\n", encoding="utf-8"
     )
     (worktree / "untracked.txt").write_text("untracked content\n", encoding="utf-8")
+    (worktree / "specs").mkdir()
+    (worktree / "specs" / "harness-plan.md").write_text(
+        "benchmark planning artifact\n", encoding="utf-8"
+    )
 
     patch = extract_git_patch(worktree, base_commit=base_commit)
 
@@ -137,6 +141,11 @@ def test_extract_git_patch_captures_committed_uncommitted_and_untracked(
     assert "uncommitted edit" in patch, "working-tree edits must appear in patch"
     assert "untracked.txt" in patch, "untracked files must appear in patch"
     assert "untracked content" in patch
+    assert "--- /dev/null" in patch, "new-file diffs must keep valid /dev/null headers"
+    assert "+++ b/untracked.txt" in patch
+    assert "harness-plan.md" not in patch, (
+        "harness specs must not enter evaluator patch"
+    )
 
 
 def test_extract_git_patch_without_base_falls_back_to_uncommitted_diff(
@@ -152,6 +161,42 @@ def test_extract_git_patch_without_base_falls_back_to_uncommitted_diff(
     patch = extract_git_patch(worktree)
 
     assert "working edit" in patch
+
+
+def test_extract_git_patch_excludes_untracked_specs_but_keeps_tracked_spec_edits(
+    tmp_path: Path,
+) -> None:
+    worktree = tmp_path / "worktree"
+    base_commit = _init_git_worktree_with_base(worktree)
+    (worktree / "specs").mkdir()
+    (worktree / "specs" / "tracked.md").write_text("base spec\n", encoding="utf-8")
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "OCO Test",
+        "GIT_AUTHOR_EMAIL": "test@example.invalid",
+        "GIT_COMMITTER_NAME": "OCO Test",
+        "GIT_COMMITTER_EMAIL": "test@example.invalid",
+    }
+    subprocess.run(
+        ["git", "-C", str(worktree), "add", "specs/tracked.md"], check=True, env=env
+    )
+    subprocess.run(
+        ["git", "-C", str(worktree), "commit", "--quiet", "-m", "tracked spec"],
+        check=True,
+        env=env,
+    )
+    (worktree / "specs" / "tracked.md").write_text(
+        "updated tracked spec\n", encoding="utf-8"
+    )
+    (worktree / "specs" / "untracked.md").write_text(
+        "harness-only spec\n", encoding="utf-8"
+    )
+
+    patch = extract_git_patch(worktree, base_commit=base_commit)
+
+    assert "specs/tracked.md" in patch
+    assert "updated tracked spec" in patch
+    assert "specs/untracked.md" not in patch
 
 
 def test_parse_oco_json_stream_accepts_json_lines_and_text() -> None:
