@@ -58,13 +58,16 @@ EXPECTED_FILE = "orchestration_check.txt"
 EXPECTED_CONTENT = "Orchestration handoff verified.\n"
 DELEGATION_PROMPT = (
     "You are running inside the OCO benchmark orchestration smoke. "
-    "Use the Orchestrator subagent via the `task` tool "
-    '(subagent_type="orchestrator") to perform this work: create a single '
-    f"file named `{EXPECTED_FILE}` in the current repository containing "
-    f"exactly this one line: `{EXPECTED_CONTENT.strip()}`. Do not modify "
-    "any other files. Do not write the file yourself; the point of this "
-    "smoke is to verify the task tool can reach the Orchestrator. After "
-    "the Orchestrator finishes, stop."
+    "You MUST delegate this work to the Orchestrator via the `task` tool "
+    '(subagent_type="orchestrator"). This is a hard rule: do not skip '
+    "delegation because the task looks trivial. The entire point of this "
+    "smoke is to verify the task tool can reach the Orchestrator end-to-end. "
+    "Writing the file directly with the write tool, OR describing the "
+    "delegation in prose without actually invoking the task tool, counts as "
+    "a smoke FAILURE. The work to delegate: create a single file named "
+    f"`{EXPECTED_FILE}` in the current repository containing exactly this "
+    f"one line: `{EXPECTED_CONTENT.strip()}`. Do not modify any other files. "
+    "After the Orchestrator finishes, stop."
 )
 
 
