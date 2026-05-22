@@ -6,8 +6,14 @@ import uuid
 from pathlib import Path
 
 from controller.atomic import atomic_write_text
-from controller.boundary import BoundaryConfig, BoundaryMonitor
+from controller.boundary import (
+    BoundaryConfig,
+    BoundaryMonitor,
+    classify_trace_outside_writes,
+    default_real_boundary_config,
+)
 from controller.core import AttemptSpec, BenchmarkController, ControllerConfig
+from controller.fixtures import FixtureOCOAdapter
 from controller.modal_eval import (
     FixtureModalClient,
     ModalEvalResponse,
@@ -150,6 +156,133 @@ def test_boundary_check_flags_traced_protected_and_relative_writes() -> None:
         assert "RELATIVE:relative-write.txt" in proof.trace_outside_writes
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_trace_classifier_ignores_failed_write_like_syscalls(tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    trace = allowed / "filesystem-trace.log"
+    atomic_write_text(
+        trace,
+        '123 openat(AT_FDCWD, "/tmp/missing-write-target", O_RDWR|O_CREAT, 0600) = -1 ENOENT (No such file or directory)\n',
+    )
+
+    assert (
+        classify_trace_outside_writes(
+            trace,
+            BoundaryConfig(protected_roots=(), allowed_roots=(allowed,)),
+        )
+        == []
+    )
+
+
+def test_trace_classifier_resolves_relative_openat_paths_against_parent_fd(
+    tmp_path: Path,
+) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    trace = allowed / "filesystem-trace.log"
+    atomic_write_text(
+        trace,
+        f'123 openat(AT_FDCWD, "{allowed}", O_RDONLY|O_DIRECTORY) = 11\n'
+        '123 openat(11, ".node-gyp", O_RDWR|O_CREAT, 0600) = 12\n',
+    )
+
+    assert (
+        classify_trace_outside_writes(
+            trace,
+            BoundaryConfig(protected_roots=(), allowed_roots=(allowed,)),
+        )
+        == []
+    )
+
+
+def test_trace_classifier_does_not_reuse_stale_fd_after_non_directory_open(
+    tmp_path: Path,
+) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    trace = allowed / "filesystem-trace.log"
+    atomic_write_text(
+        trace,
+        f'123 openat(AT_FDCWD, "{allowed}", O_RDONLY|O_DIRECTORY) = 11\n'
+        '123 openat(AT_FDCWD, "/tmp/not-a-directory-fd", O_RDONLY) = 11\n'
+        '123 openat(11, "escaped", O_WRONLY|O_CREAT, 0600) = 12\n',
+    )
+
+    assert "RELATIVE:escaped" in classify_trace_outside_writes(
+        trace,
+        BoundaryConfig(protected_roots=(), allowed_roots=(allowed,)),
+    )
+
+
+def test_trace_classifier_clears_angle_bracket_close_fd(tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    trace = allowed / "filesystem-trace.log"
+    atomic_write_text(
+        trace,
+        f'123 openat(AT_FDCWD, "{allowed}", O_RDONLY|O_DIRECTORY) = 11\n'
+        f"123 close(11<{allowed}>) = 0\n"
+        '123 openat(11, "escaped", O_WRONLY|O_CREAT, 0600) = 12\n',
+    )
+
+    assert "RELATIVE:escaped" in classify_trace_outside_writes(
+        trace,
+        BoundaryConfig(protected_roots=(), allowed_roots=(allowed,)),
+    )
+
+
+def test_default_real_boundary_allows_external_repo_cache_dir(tmp_path: Path) -> None:
+    run_root = tmp_path / "runs" / "run-1"
+    repo_cache = tmp_path / "repo-cache"
+    production_config = tmp_path / "oco-production-config"
+    run_root.mkdir(parents=True)
+    repo_cache.mkdir()
+    production_config.mkdir()
+
+    config = default_real_boundary_config(
+        run_root=run_root,
+        production_config_dir=production_config,
+        project_root=PROJECT_ROOT,
+        repo_cache_dir=repo_cache,
+    )
+    assert repo_cache.resolve() in config.allowed_roots
+
+    monitor = BoundaryMonitor(config)
+    monitor.start()
+    atomic_write_text(repo_cache / "benchmark-owned-cache-file", "allowed\n")
+    proof = monitor.finish(run_root / "boundary-proof.md")
+
+    assert not proof.outside_changes
+    assert not proof.trace_outside_writes
+
+
+def test_controller_default_boundary_wires_in_repo_cache_manager(
+    tmp_path: Path,
+) -> None:
+    run_root = tmp_path / "run"
+    production_config = tmp_path / "oco-production-config"
+    repo_cache = tmp_path / "repo-cache"
+    production_config.mkdir()
+    manager = RepoCacheManager(
+        cache_root=repo_cache,
+        worktree_root=tmp_path / "worktrees",
+    )
+
+    controller = BenchmarkController(
+        ControllerConfig(
+            run_root=run_root,
+            run_id="repo-cache-boundary",
+            adapter_kind="real",
+            production_config_dir=production_config,
+        ),
+        adapter=FixtureOCOAdapter(),
+        repo_cache_manager=manager,
+    )
+
+    assert controller.boundary_config is not None
+    assert repo_cache.resolve() in controller.boundary_config.allowed_roots
 
 
 class _LocalMirrorGitClient:

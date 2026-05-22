@@ -25,6 +25,10 @@ Everything runs on a single GPU pod, eliminating the public-internet hop between
 
 Full plan: [`docs/oco-pro731-benchmark-plan-2026-05-21.md`](docs/oco-pro731-benchmark-plan-2026-05-21.md).
 
+## Qwen prompt variant policy
+
+The benchmark normally mirrors the production OCO prompts. For Qwen-family self-hosted models only, the config materializer applies the pod-only `prompts.qwen/` overlay for PM and Orchestrator. The overlay preserves the production prompt structure but strengthens benchmark-critical delegation, spec, autocompaction, and audit-loop rules into RFC2119 `MUST` language so Qwen follows the same PM → Orchestrator → Auditor protocol expected from stronger production models. Non-Qwen materialized snapshots keep production prompt bytes unchanged.
+
 ## Status
 
 Controller implementation is in progress: the dry-run lifecycle, real-OCO adapter wiring, pinned SWE-bench Pro task loader, eval-bundle preparation, Modal pipeline contracts, and SSH rsync backup path are implemented and covered by offline tests. Paid pod launch, calibration, and the full 731 run are still pending.

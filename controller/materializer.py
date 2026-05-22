@@ -51,7 +51,7 @@ def _force_streaming_tool_calls() -> bool:
 
 
 KEEP_SUBAGENTS = {"orchestrator", "investigator", "auditor"}
-STRIP_SUBAGENTS = {"test_runner", "web-search", "docs"}
+STRIP_SUBAGENTS = {"general", "explore", "test_runner", "web-search", "docs"}
 PRIMARY_AGENT_CANDIDATES = ("pm", "build", "plan")
 COMPACTION_AGENT = "compaction"
 STRIP_TOOLS = {
@@ -65,6 +65,11 @@ STRIP_TOOLS = {
 CONFIG_FILENAMES = ("opencode.jsonc", "opencode.json", "oco.jsonc", "oco.json")
 FILE_REFERENCE_PATTERN = re.compile(r"^\{file:([^{}]+)\}$")
 PROMPT_FILE_SUFFIXES = {".md", ".txt"}
+QWEN_PROMPT_OVERLAY_DIR = Path(__file__).resolve().parents[1] / "prompts.qwen"
+QWEN_PROMPT_OVERLAY_TARGETS = {
+    "prompts/pm.txt": "pm.txt",
+    "prompts/orchestrator.txt": "orchestrator.txt",
+}
 
 
 class MaterializerError(RuntimeError):
@@ -336,16 +341,44 @@ def _validate_snapshot_prompt_path(
     return reference_path
 
 
+def _is_qwen_model(model_name: str) -> bool:
+    return "qwen" in model_name.lower()
+
+
+def _qwen_prompt_overlay(reference: _PromptReference) -> Path | None:
+    overlay_name = QWEN_PROMPT_OVERLAY_TARGETS.get(reference.relative.as_posix())
+    if overlay_name is None:
+        return None
+    return QWEN_PROMPT_OVERLAY_DIR / overlay_name
+
+
 def _copy_prompt_files(
-    references: list[_PromptReference], snapshot_dir: Path
-) -> list[str]:
+    references: list[_PromptReference], snapshot_dir: Path, *, use_qwen_overlay: bool
+) -> tuple[list[str], list[dict[str, str]]]:
     copied: list[str] = []
+    overlays: list[dict[str, str]] = []
     for reference in references:
+        source = reference.source
+        if use_qwen_overlay:
+            overlay_source = _qwen_prompt_overlay(reference)
+            if overlay_source is not None:
+                if not overlay_source.is_file():
+                    raise MaterializerError(
+                        f"Qwen prompt overlay for {reference.relative.as_posix()} is missing at {overlay_source}"
+                    )
+                source = overlay_source
+                overlays.append(
+                    {
+                        "agent": reference.agent_name,
+                        "target": reference.relative.as_posix(),
+                        "source": str(overlay_source),
+                    }
+                )
         target = snapshot_dir / reference.relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(reference.source, target)
+        shutil.copy2(source, target)
         copied.append(reference.relative.as_posix())
-    return copied
+    return copied, overlays
 
 
 SELFHOST_PROVIDER_ID = "selfhost"
@@ -639,7 +672,14 @@ def materialize_config(options: MaterializerOptions) -> MaterializerResult:
                 sanitized["model"] = agent_model_address
             kept_agents[name] = sanitized
             permission_removed_by_agent[name] = removed_perm_keys
-        config["agent"] = kept_agents
+        config["agent"] = {
+            **kept_agents,
+            **{
+                name: {"disable": True}
+                for name in sorted(STRIP_SUBAGENTS)
+                if name not in kept_agent_names
+            },
+        }
 
         stripped_plugin_count = (
             len(config.get("plugin", []) or [])
@@ -688,7 +728,10 @@ def materialize_config(options: MaterializerOptions) -> MaterializerResult:
         prompt_sources = _prompt_references(
             _agent_map(config), production_dir, require_existing=True
         )
-        copied_prompts = _copy_prompt_files(prompt_sources, tmp_dir)
+        use_qwen_overlay = _is_qwen_model(options.model_name)
+        copied_prompts, prompt_overlays = _copy_prompt_files(
+            prompt_sources, tmp_dir, use_qwen_overlay=use_qwen_overlay
+        )
         copied_prompt_set = set(copied_prompts)
         materialized_config_path = tmp_dir / "opencode.jsonc"
         atomic_write_text(
@@ -701,6 +744,7 @@ def materialize_config(options: MaterializerOptions) -> MaterializerResult:
             "kept_agents": sorted(kept_agent_names),
             "removed_agents": removed_agents,
             "explicitly_stripped_subagents": sorted(STRIP_SUBAGENTS),
+            "disabled_agents": sorted(STRIP_SUBAGENTS),
             "stripped_plugin_count": stripped_plugin_count,
             "stripped_mcp_keys": stripped_mcp_keys,
             "stripped_skills": sorted(set(stripped_skills)),
@@ -722,6 +766,8 @@ def materialize_config(options: MaterializerOptions) -> MaterializerResult:
             ),
             "permission_removed_by_agent": permission_removed_by_agent,
             "benchmark_overrides": benchmark_overrides,
+            "prompt_variant": "qwen" if use_qwen_overlay else "production",
+            "prompt_overlays": prompt_overlays,
         }
         atomic_write_json(tmp_dir / "strip-diff-manifest.json", manifest)
         if output_dir.exists():

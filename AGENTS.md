@@ -13,9 +13,9 @@ This repo is the SWE-bench Pro benchmark harness for OCO. It is a *consumer* of 
 
 The benchmark mirrors a real user's OCO setup, curated to remove personal-workflow surface area that isn't needed for SWE-bench Pro.
 
-- Isolated per-attempt OCO config copies prompts and agent definitions for the kept subagents (`orchestrator`, `investigator`, `auditor`) from `~/.config/oco/`. `test_runner`, `web-search`, `docs`, and all skills are stripped.
+- Isolated per-attempt OCO config copies prompts and agent definitions for the kept subagents (`orchestrator`, `investigator`, `auditor`) from `~/.config/oco/`. `general`, `explore`, `test_runner`, `web-search`, `docs`, and all skills are stripped; native stripped subagents are emitted as `disable: true` so OCO's built-ins cannot leak back in.
 - Qwen 3.6 has no OpenAI-style `reasoning.effort` knob, so OCO's `xhigh`/`high` agent variants are not used here. All agents share one Qwen-native model config (binary thinking on/off plus the model-card-recommended sampling for precise coding).
-- The benchmark does not invent new prompts or agent definitions. If something is wrong with the production setup that affects the score, fix it in production first.
+- The benchmark does not invent new prompts or agent definitions. If something is wrong with the production setup that affects the score, fix it in production first. The documented exception is the Qwen-family prompt overlay in `prompts.qwen/`: it is a pod-only, model-specific strengthening of the production PM/Orchestrator prompts that preserves the original structure while changing benchmark-critical soft guidance into RFC2119 `MUST` language for Qwen-family models.
 
 ## Storage policy
 

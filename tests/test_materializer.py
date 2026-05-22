@@ -12,6 +12,8 @@ from controller.materializer import (
     HEADLESS_SAFE_PERMISSION_OVERRIDES,
     MaterializerError,
     MaterializerOptions,
+    QWEN_PROMPT_OVERLAY_DIR,
+    STRIP_SUBAGENTS,
     materialize_config,
 )
 
@@ -28,6 +30,38 @@ PRODUCTION_PERMISSION_READ = {
     "**/config/database.yml": "deny",
     "*": "allow",
 }
+KEPT_AGENT_NAMES = ("pm", "orchestrator", "auditor", "investigator", "compaction")
+
+
+def _find_oco_binary() -> str | None:
+    oco_binary = os.environ.get("OCO_BENCHMARK_TEST_OCO_BINARY") or shutil.which("oco")
+    if oco_binary:
+        return oco_binary
+    candidate = Path.home() / ".local" / "bin" / "oco"
+    if candidate.exists():
+        return str(candidate)
+    return None
+
+
+def _install_snapshot_as_oco_config(snapshot_dir: Path, isolated_home: Path) -> None:
+    opencode_dir = isolated_home / ".config" / "opencode"
+    opencode_dir.mkdir(parents=True)
+    for child in snapshot_dir.iterdir():
+        target = opencode_dir / child.name
+        if child.is_dir():
+            shutil.copytree(child, target)
+        else:
+            shutil.copy2(child, target)
+
+
+def _isolated_oco_env(isolated_home: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["HOME"] = str(isolated_home)
+    env["XDG_CONFIG_HOME"] = str(isolated_home / ".config")
+    env["XDG_DATA_HOME"] = str(isolated_home / ".local" / "share")
+    env["XDG_STATE_HOME"] = str(isolated_home / ".local" / "state")
+    env["XDG_CACHE_HOME"] = str(isolated_home / ".cache")
+    return env
 
 
 def _write_fixture_config(config_dir: Path) -> None:
@@ -189,15 +223,25 @@ def test_materialized_snapshot_uses_oco_runtime_placements(
     config = json.loads(result.config_path.read_text(encoding="utf-8"))
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
-    # Kept agents only; all addressed as "<provider_id>/<model_id>".
+    # Kept agents stay runnable; stripped native subagents are explicitly
+    # disabled because OCO registers them before user config is merged.
     assert set(config["agent"]) == {
         "pm",
         "orchestrator",
         "auditor",
         "investigator",
         "compaction",
+        "general",
+        "explore",
+        "test_runner",
+        "web-search",
+        "docs",
     }
-    for name, agent in config["agent"].items():
+    for name in STRIP_SUBAGENTS:
+        assert config["agent"][name] == {"disable": True}
+
+    for name in KEPT_AGENT_NAMES:
+        agent = config["agent"][name]
         assert agent["model"] == "selfhost/selfhost-qwen", (
             f"agent {name!r} has unexpected model address {agent['model']!r}"
         )
@@ -207,13 +251,15 @@ def test_materialized_snapshot_uses_oco_runtime_placements(
     # Sampling lives at AGENT level (OCO reads agent.temperature/top_p into
     # the top-level AI SDK request settings; model.options.temperature is
     # not the path OCO reads).
-    for name, agent in config["agent"].items():
+    for name in KEPT_AGENT_NAMES:
+        agent = config["agent"][name]
         assert agent["temperature"] == 1.0
         assert agent["top_p"] == 0.95
 
     # Stripped built-in tools are denied per kept agent. Dropping the legacy
     # tools field does not by itself disable webfetch/compress/etc.
-    for name, agent in config["agent"].items():
+    for name in KEPT_AGENT_NAMES:
+        agent = config["agent"][name]
         permission = agent.get("permission", {})
         assert permission.get("webfetch") == "deny"
         assert permission.get("compress") == "deny"
@@ -306,6 +352,8 @@ def test_materialized_snapshot_uses_oco_runtime_placements(
 
     # Manifest still records stripped surface.
     assert manifest["removed_agents"] == ["docs", "test_runner", "web-search"]
+    assert manifest["explicitly_stripped_subagents"] == sorted(STRIP_SUBAGENTS)
+    assert manifest["disabled_agents"] == sorted(STRIP_SUBAGENTS)
     assert manifest["stripped_plugin_count"] == 1
     assert manifest["stripped_mcp_keys"] == ["perplexity"]
     assert set(manifest["prompts_copied"]) == {
@@ -321,8 +369,18 @@ def test_materialized_snapshot_uses_oco_runtime_placements(
         "docs.txt",
     }
 
-    # Prompt files physically present, byte-equal to source.
-    for name in ("pm", "orchestrator", "auditor", "investigator", "compaction"):
+    # Qwen prompt overlay replaces only PM and Orchestrator; other prompt
+    # files remain byte-equal to production.
+    assert manifest["prompt_variant"] == "qwen"
+    assert {item["target"] for item in manifest["prompt_overlays"]} == {
+        "prompts/pm.txt",
+        "prompts/orchestrator.txt",
+    }
+    for name in ("pm", "orchestrator"):
+        assert (output / "prompts" / f"{name}.txt").read_bytes() == (
+            QWEN_PROMPT_OVERLAY_DIR / f"{name}.txt"
+        ).read_bytes()
+    for name in ("auditor", "investigator", "compaction"):
         assert (output / "prompts" / f"{name}.txt").read_bytes() == (
             production / "prompts" / f"{name}.txt"
         ).read_bytes()
@@ -360,8 +418,7 @@ def test_headless_safe_permission_overrides_are_forced_on_every_kept_agent(
     config = json.loads(result.config_path.read_text(encoding="utf-8"))
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
-    kept_agents = ("pm", "orchestrator", "auditor", "investigator", "compaction")
-    for name in kept_agents:
+    for name in KEPT_AGENT_NAMES:
         permission = config["agent"][name].get("permission", {})
         for tool, expected in HEADLESS_SAFE_PERMISSION_OVERRIDES.items():
             assert permission.get(tool) == expected, (
@@ -399,11 +456,7 @@ def test_materialized_snapshot_is_valid_oco_config(tmp_path: Path) -> None:
     `oco debug config` against the materialized snapshot in an isolated HOME
     and asserts OCO does not emit a 'Configuration is invalid' error.
     """
-    oco_binary = os.environ.get("OCO_BENCHMARK_TEST_OCO_BINARY") or shutil.which("oco")
-    if not oco_binary:
-        candidate = Path.home() / ".local" / "bin" / "oco"
-        if candidate.exists():
-            oco_binary = str(candidate)
+    oco_binary = _find_oco_binary()
     if not oco_binary:
         pytest.skip(
             "oco binary not available; set OCO_BENCHMARK_TEST_OCO_BINARY to enable"
@@ -426,21 +479,8 @@ def test_materialized_snapshot_is_valid_oco_config(tmp_path: Path) -> None:
     )
 
     isolated_home = tmp_path / "oco-home"
-    opencode_dir = isolated_home / ".config" / "opencode"
-    opencode_dir.mkdir(parents=True)
-    for child in output.iterdir():
-        target = opencode_dir / child.name
-        if child.is_dir():
-            shutil.copytree(child, target)
-        else:
-            shutil.copy2(child, target)
-
-    env = os.environ.copy()
-    env["HOME"] = str(isolated_home)
-    env["XDG_CONFIG_HOME"] = str(isolated_home / ".config")
-    env["XDG_DATA_HOME"] = str(isolated_home / ".local" / "share")
-    env["XDG_STATE_HOME"] = str(isolated_home / ".local" / "state")
-    env["XDG_CACHE_HOME"] = str(isolated_home / ".cache")
+    _install_snapshot_as_oco_config(output, isolated_home)
+    env = _isolated_oco_env(isolated_home)
     completed = subprocess.run(
         [oco_binary, "debug", "config"],
         env=env,
@@ -455,6 +495,107 @@ def test_materialized_snapshot_is_valid_oco_config(tmp_path: Path) -> None:
     )
     assert completed.returncode == 0, (
         f"oco debug config exited {completed.returncode}:\n{combined}"
+    )
+
+
+def test_disabled_native_subagents_are_unreachable_in_real_oco(
+    tmp_path: Path,
+) -> None:
+    oco_binary = _find_oco_binary()
+    if not oco_binary:
+        pytest.skip(
+            "oco binary not available; set OCO_BENCHMARK_TEST_OCO_BINARY to enable"
+        )
+
+    production = tmp_path / "prod"
+    production.mkdir()
+    _write_fixture_config(production)
+    output = tmp_path / "snapshot"
+    materialize_config(
+        MaterializerOptions(
+            production_config_dir=production,
+            output_dir=output,
+            endpoint_url="http://localhost:65535/v1",
+            api_key="test-key-9999",
+        )
+    )
+
+    isolated_home = tmp_path / "oco-home"
+    _install_snapshot_as_oco_config(output, isolated_home)
+    env = _isolated_oco_env(isolated_home)
+
+    listing = subprocess.run(
+        [oco_binary, "agent", "list"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    listing_output = listing.stdout + "\n" + listing.stderr
+    assert listing.returncode == 0, listing_output
+    for name in STRIP_SUBAGENTS:
+        assert f"{name} (subagent)" not in listing_output
+
+        debug_agent = subprocess.run(
+            [oco_binary, "debug", "agent", name],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        debug_output = debug_agent.stdout + "\n" + debug_agent.stderr
+        assert debug_agent.returncode != 0, debug_output
+        assert f"Agent {name} not found" in debug_output
+
+
+def test_non_qwen_model_copies_production_prompts_byte_for_byte(
+    tmp_path: Path,
+) -> None:
+    production = tmp_path / "prod"
+    production.mkdir()
+    _write_fixture_config(production)
+    output = tmp_path / "snapshot"
+
+    result = materialize_config(
+        MaterializerOptions(
+            production_config_dir=production,
+            output_dir=output,
+            model_name="selfhost-gpt55",
+            endpoint_url="http://localhost:8001/v1",
+            api_key="test-key",
+        )
+    )
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["prompt_variant"] == "production"
+    assert manifest["prompt_overlays"] == []
+    for name in KEPT_AGENT_NAMES:
+        assert (output / "prompts" / f"{name}.txt").read_bytes() == (
+            production / "prompts" / f"{name}.txt"
+        ).read_bytes()
+
+
+def test_qwen_prompt_overlays_include_required_hardening() -> None:
+    pm_prompt = (QWEN_PROMPT_OVERLAY_DIR / "pm.txt").read_text(encoding="utf-8")
+    orchestrator_prompt = (QWEN_PROMPT_OVERLAY_DIR / "orchestrator.txt").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "MUST write a real markdown spec file under a `specs/` subdirectory"
+        in pm_prompt
+    )
+    assert "MUST delegate to the Orchestrator via the `task` tool" in pm_prompt
+    assert "Doing the work directly is permitted ONLY" in pm_prompt
+    assert "MUST trust the autocompaction system" in pm_prompt
+    assert (
+        "MUST NOT manually trim, rewrite, or summarize conversation history"
+        in pm_prompt
+    )
+    assert "MUST run a fresh Auditor on the complete changeset" in orchestrator_prompt
+    assert (
+        "MUST iterate fix-and-re-audit until the Auditor returns PASS"
+        in orchestrator_prompt
     )
 
 

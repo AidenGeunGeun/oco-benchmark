@@ -99,6 +99,11 @@ class BenchmarkController:
                 run_root=self.run_paths.run_root,
                 production_config_dir=config.production_config_dir,
                 project_root=project_root,
+                repo_cache_dir=(
+                    repo_cache_manager.cache_root
+                    if repo_cache_manager is not None
+                    else None
+                ),
             )
         else:
             self.boundary_config = config.boundary_config
