@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+eval-venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Logs and temp
+*.log
+*.tmp
+/tmp/
+
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Benchmark run outputs (large, kept off git)
+runs/
+runs-archive/
+
+# Task caches (cloned repos, generated jsonl, large)
+tasks/repo-cache/
+tasks/*.jsonl
+tasks/*.json
+!tasks/*.example.jsonl
+!tasks/*.example.json
+
+# Vendor (cloned external tooling)
+vendor/
+
+# Modal credentials live in ~/.modal.toml, not in repo
+.modal.toml
