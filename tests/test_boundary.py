@@ -233,6 +233,27 @@ def test_trace_classifier_clears_angle_bracket_close_fd(tmp_path: Path) -> None:
     )
 
 
+def test_trace_classifier_ignores_relative_symlink_targets_when_link_path_allowed(
+    tmp_path: Path,
+) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    trace = allowed / "filesystem-trace.log"
+    atomic_write_text(
+        trace,
+        f'123 symlink("../is-docker/cli.js", "{allowed / "is-docker"}") = 0\n'
+        f'123 link("../source", "{allowed / "hard-link"}") = 0\n',
+    )
+
+    assert (
+        classify_trace_outside_writes(
+            trace,
+            BoundaryConfig(protected_roots=(), allowed_roots=(allowed,)),
+        )
+        == []
+    )
+
+
 def test_default_real_boundary_allows_external_repo_cache_dir(tmp_path: Path) -> None:
     run_root = tmp_path / "runs" / "run-1"
     repo_cache = tmp_path / "repo-cache"

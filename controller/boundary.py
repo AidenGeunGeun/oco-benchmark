@@ -340,6 +340,8 @@ def _trace_write_paths(
             _resolve_trace_dirfd(pid, tokens[2], fd_dirs) if len(tokens) > 2 else None
         )
         return [(paths[0], old_parent), (paths[1], new_parent)]
+    if syscall in {"link", "symlink"} and len(paths) >= 2:
+        return [(paths[1], None)]
     if syscall == "symlinkat" and len(paths) >= 2:
         tokens = _split_trace_args(args)
         parent = (
