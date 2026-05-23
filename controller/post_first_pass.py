@@ -121,9 +121,17 @@ OUTPUT_LENGTH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 INFRA_FAILURE_PATTERN = re.compile(
-    r"\b(ECONNREFUSED|ETIMEDOUT|ECONNRESET|rate limit|429|5\d\d|"
-    r"provider error|API error|Bad Gateway|Internal Server Error|"
-    r"connection refused|vLLM error)\b",
+    r"("
+    r"\bECONNREFUSED\b|\bETIMEDOUT\b|\bECONNRESET\b|"
+    r"\bconnection\s+refused\b|"
+    r"\brate[-_ ]?limit(?:ed|ing)?\b|"
+    r"\bHTTP[/ ]\d+(?:\.\d+)?\s+(?:429|5\d\d)\b|"
+    r"\bstatus(?:[_ ]code)?\s*[:=]\s*[\"\']?(?:429|5\d\d)\b|"
+    r"\b(?:429|5\d\d)\s+(?:Too\s+Many|Rate\s+Limit|Internal|Bad|Service|Gateway)\b|"
+    r"\bprovider\s+error\b|\bAPI\s+error\b|"
+    r"\bBad\s+Gateway\b|\bInternal\s+Server\s+Error\b|"
+    r"\bvLLM\s+error\b|\bupstream\s+(?:timeout|error)\b"
+    r")",
     re.IGNORECASE,
 )
 

@@ -15,6 +15,8 @@ from controller.post_first_pass import (
     CLASS_MALFORMED_TOOL_PROSE_NO_PATCH,
     CLASS_OUTPUT_LENGTH_NO_PATCH,
     CLASS_STOPPED_NO_PATCH,
+    CLASS_SUBPROCESS_PROVIDER_INFRA_FAILURE,
+    INFRA_FAILURE_PATTERN,
     classify_run,
     package_delegated_diagnostics,
     prepare_continuation_run,
@@ -253,3 +255,113 @@ def test_post_continuation_final_bundle_keeps_source_counts(tmp_path: Path) -> N
     assert manifest["bundle_candidate_denominator_note"].endswith(
         "per plan section 11.3."
     )
+
+
+def test_infra_failure_pattern_ignores_benign_timestamp_and_token_numbers() -> None:
+    """Regression: bare 3-digit numbers must not trigger infra-failure class.
+
+    Phase-log lines carry Unix timestamps such as 1779532136.04 and token
+    counts such as completion_tokens=512 that previously matched a loose
+    ``5\\d\\d`` alternation and forced legitimate stopped/output-length
+    attempts into ``subprocess_provider_infra_failure``.
+    """
+
+    benign_blobs = [
+        '{"event":"BACKUP_NOOP","reason":"backup target not configured",'
+        '"retryable":true,"success":true,"timestamp":1779532136.0461133}',
+        '{"event":"step_finish","usage":{"completion_tokens":523,'
+        '"prompt_tokens":12999}}',
+        '{"event":"step_finish","usage":{"completion_tokens":429,'
+        '"prompt_tokens":4290}}',
+        '{"event":"PROGRESS","done":585,"clean":542,"bad":43}',
+        '{"timestamp":1779532735.0261126,"event":"BACKUP_NOOP"}',
+    ]
+    for blob in benign_blobs:
+        assert INFRA_FAILURE_PATTERN.search(blob) is None, (
+            f"benign blob matched infra pattern: {blob!r}"
+        )
+
+
+def test_infra_failure_pattern_still_matches_real_provider_signals() -> None:
+    real_signals = [
+        "fetch failed: ECONNREFUSED 127.0.0.1:8000",
+        "Error: ECONNRESET while reading response",
+        "upstream timeout from vLLM",
+        "vLLM error: engine core dead",
+        "POST /v1/chat/completions HTTP/1.1 503 Service Unavailable",
+        "status_code: 429",
+        "HTTP/1.1 502 Bad Gateway",
+        "provider error: Internal Server Error",
+        "rate limited by upstream",
+        "rate-limit exceeded",
+        "connection refused on port 8000",
+    ]
+    for blob in real_signals:
+        assert INFRA_FAILURE_PATTERN.search(blob) is not None, (
+            f"real signal did not match infra pattern: {blob!r}"
+        )
+
+
+def test_attempt_with_timestamp_only_phase_log_is_not_classified_as_infra(
+    tmp_path: Path,
+) -> None:
+    """End-to-end: phase-log noise alone must not force infra-failure class.
+
+    Mirrors what we saw on the live H200 run: completed attempts with no
+    patch, real step/tool work, and a phase-log full of BACKUP_NOOP timestamp
+    entries were misclassified as ``subprocess_provider_infra_failure`` due
+    to a loose ``5\\d\\d`` match against the Unix timestamps. After the fix
+    they must fall through to a continuation-eligible class.
+    """
+    run_root = tmp_path / "first-pass"
+    paths = AttemptPaths(run_root, "repo_a__task-002")
+    paths.ensure()
+    normalized = {
+        "attempt_id": "repo_a__task-002",
+        "run_id": "unit-run",
+        "steps": [
+            {
+                "finish_reason": "stop",
+                "completion_tokens": 523,
+                "tools_called": ["task:orchestrator"],
+            }
+        ],
+        "step_count": 1,
+        "tool_call_count": 1,
+        "no_patch": True,
+        "queued_for_evaluation": False,
+        "precheck_failed": False,
+        "delegation_observed": True,
+    }
+    atomic_write_json(paths.normalized_path, normalized)
+    atomic_write_text(paths.patch_path, "")
+    atomic_write_json(
+        paths.attempt_dir / "oco-subprocess.json",
+        {"returncode": 0, "timed_out": False, "timeout_seconds": 7200.0},
+    )
+    atomic_write_text(
+        paths.attempt_dir / "phase-log.jsonl",
+        '{"event":"BACKUP_NOOP","reason":"backup target not configured",'
+        '"retryable":true,"success":true,"timestamp":1779532136.0461133}\n'
+        '{"event":"BACKUP_NOOP","reason":"backup target not configured",'
+        '"retryable":true,"success":true,"timestamp":1779532734.8661547}\n',
+    )
+    paths.write_phase_marker(Phase.DONE)
+
+    output_dir = tmp_path / "classify"
+    classify_run(
+        run_root=run_root,
+        task_list_path=FIXTURE,
+        output_dir=output_dir,
+        run_id="unit-run",
+    )
+
+    by_id = {
+        json.loads(line)["instance_id"]: json.loads(line)
+        for line in (output_dir / "attempt-classification.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    }
+    row = by_id["repo_a__task-002"]
+    assert row["class"] != CLASS_SUBPROCESS_PROVIDER_INFRA_FAILURE
+    assert row["continuation_eligible"] is True
