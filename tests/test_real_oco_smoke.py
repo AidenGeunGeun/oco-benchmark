@@ -9,7 +9,11 @@ from pathlib import Path
 import pytest
 
 from controller.core import AttemptSpec, BenchmarkController, ControllerConfig
-from controller.real_oco import RealOCOAdapter, extract_git_patch, parse_oco_json_stream
+from controller.real_oco import (
+    RealOCOAdapter,
+    extract_git_patch,
+    parse_oco_json_stream,
+)
 from controller.version_gate import REQUIRED_FEATURE_STRINGS
 
 
@@ -311,6 +315,108 @@ def test_cli_real_adapter_uses_subprocess_not_fixture(tmp_path: Path) -> None:
     attempt_dir = run_root / "attempts" / "cli-real-attempt"
     assert (attempt_dir / "oco-subprocess.json").exists()
     assert not (run_root / "oco-config-snapshot" / "placeholder.json").exists()
+
+
+def test_real_controller_disable_boundary_does_not_wrap_with_strace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_oco = _fake_oco_with_run(tmp_path / "oco-realish")
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    strace = fake_bin / "strace"
+    strace.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    strace.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}" + os.environ.get("PATH", ""))
+    production = _production_config(tmp_path / "prod")
+    run_root = tmp_path / "run"
+
+    controller = BenchmarkController(
+        ControllerConfig(
+            run_root=run_root,
+            run_id="no-strace",
+            adapter_kind="real",
+            production_config_dir=production,
+            oco_binary=str(fake_oco),
+            disable_boundary=True,
+        )
+    )
+    controller.run_attempts([AttemptSpec("attempt")])
+
+    record = json.loads(
+        (run_root / "attempts" / "attempt" / "oco-subprocess.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert record["executed_command"] == record["command"]
+    assert record["filesystem_trace_enabled"] is False
+    assert "strace" not in Path(record["executed_command"][0]).name
+    assert record["output_token_env"] == "81920"
+    snapshot = json.loads(
+        (run_root / "oco-config-snapshot" / "opencode.jsonc").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (
+        snapshot["provider"]["selfhost"]["models"]["selfhost-qwen"]["limit"]["output"]
+        == 81920
+    )
+
+
+def test_real_oco_adapter_uses_safe_stdin_when_caller_stdin_is_closed(
+    tmp_path: Path,
+) -> None:
+    fake_oco = tmp_path / "oco-stdin"
+    features = "\n".join(f"# {feature}" for feature in REQUIRED_FEATURE_STRINGS)
+    fake_oco.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        f"{features}\n"
+        "if sys.argv[1:2] == ['--version']:\n"
+        "    print('2.1.7')\n"
+        "    raise SystemExit(0)\n"
+        "if sys.argv[1:2] == ['run']:\n"
+        "    try:\n"
+        "        os.read(0, 1)\n"
+        "    except OSError as exc:\n"
+        "        print(f'stdin failed: {exc}', file=sys.stderr)\n"
+        "        raise SystemExit(7)\n"
+        "    print(json.dumps({'type': 'stdin_ok'}))\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit(0)\n",
+        encoding="utf-8",
+    )
+    fake_oco.chmod(0o755)
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    (snapshot / "opencode.jsonc").write_text(
+        json.dumps({"agent": {}}), encoding="utf-8"
+    )
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    (attempt_dir / "worktree").mkdir()
+    adapter = RealOCOAdapter(
+        oco_binary=str(fake_oco),
+        config_snapshot_dir=snapshot,
+        filesystem_trace_enabled=False,
+    )
+
+    try:
+        saved_stdin = os.dup(0)
+    except OSError:
+        pytest.skip("stdin is already closed in this test process")
+    try:
+        os.close(0)
+        result = adapter.run(attempt_id="stdin-attempt", attempt_dir=attempt_dir)
+    finally:
+        os.dup2(saved_stdin, 0)
+        os.close(saved_stdin)
+
+    record = json.loads(
+        (attempt_dir / "oco-subprocess.json").read_text(encoding="utf-8")
+    )
+    assert record["returncode"] == 0
+    assert record["stdin"] == "DEVNULL"
+    assert {"type": "stdin_ok"} in result.events
 
 
 def test_real_oco_adapter_persists_stdout_and_stderr_on_subprocess_timeout(

@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from controller.atomic import atomic_write_json, atomic_write_text
+from controller.constants import QWEN_OUTPUT_TOKEN_LIMIT
 from controller.seed import SEED_MODULUS
 
 
@@ -85,7 +86,7 @@ class MaterializerOptions:
     endpoint_url: str | None = None
     api_key: str | None = None
     context_window: int = 200000
-    output_token_limit: int = 32768
+    output_token_limit: int = QWEN_OUTPUT_TOKEN_LIMIT
     sampling_seed: int | None = None
     primary_agent: str | None = None
 

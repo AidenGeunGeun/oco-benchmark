@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from controller.atomic import atomic_write_json, atomic_write_text
+from controller.constants import QWEN_OUTPUT_TOKEN_LIMIT
 from controller.version_gate import check_oco_binary, write_gate_artifact
 
 
@@ -30,6 +31,9 @@ class RealOCOAdapter:
     agent: str | None = None
     model: str | None = None
     timeout_seconds: float = 1800.0
+    filesystem_trace_enabled: bool = True
+    output_token_limit: int | None = QWEN_OUTPUT_TOKEN_LIMIT
+    preserve_existing_home: bool = False
 
     def run(
         self,
@@ -58,12 +62,15 @@ class RealOCOAdapter:
             snapshot_dir=snapshot_dir,
             attempt_dir=attempt_dir,
             seed=seed,
+            preserve_existing=self.preserve_existing_home,
         )
         env = os.environ.copy()
         env["HOME"] = str(isolated_home)
         env["XDG_CONFIG_HOME"] = str(isolated_home / ".config")
         if seed is not None:
             env["OCO_BENCHMARK_TASK_SEED"] = str(seed)
+        if self.output_token_limit is not None:
+            env["OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"] = str(self.output_token_limit)
 
         message = prompt or f"Solve benchmark task {attempt_id}."
         command = [str(self.oco_binary), "run", "--format", "json"]
@@ -75,7 +82,9 @@ class RealOCOAdapter:
 
         started = time.monotonic()
         executed_command = command_with_filesystem_trace(
-            command, attempt_dir / "filesystem-trace.log"
+            command,
+            attempt_dir / "filesystem-trace.log",
+            enabled=self.filesystem_trace_enabled,
         )
         stdout_path = attempt_dir / "oco-stdout.log"
         stderr_path = attempt_dir / "oco-stderr.log"
@@ -100,6 +109,7 @@ class RealOCOAdapter:
                 executed_command,
                 cwd=worktree,
                 env=env,
+                stdin=subprocess.DEVNULL,
                 stdout=stdout_handle,
                 stderr=stderr_handle,
                 text=True,
@@ -127,6 +137,10 @@ class RealOCOAdapter:
             "isolated_home": str(isolated_home),
             "timed_out": timed_out,
             "timeout_seconds": self.timeout_seconds,
+            "filesystem_trace_enabled": self.filesystem_trace_enabled,
+            "output_token_limit": self.output_token_limit,
+            "output_token_env": env.get("OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"),
+            "stdin": "DEVNULL",
         }
         atomic_write_json(attempt_dir / "oco-subprocess.json", subprocess_record)
         events = parse_oco_json_stream(stdout_text)
@@ -175,7 +189,11 @@ def parse_oco_json_stream(text: str) -> list[dict[str, Any]]:
     return events
 
 
-def command_with_filesystem_trace(command: list[str], trace_path: Path) -> list[str]:
+def command_with_filesystem_trace(
+    command: list[str], trace_path: Path, *, enabled: bool = True
+) -> list[str]:
+    if not enabled:
+        return command
     strace = shutil.which("strace")
     if not strace:
         return command
@@ -192,13 +210,19 @@ def command_with_filesystem_trace(command: list[str], trace_path: Path) -> list[
 
 
 def prepare_isolated_config_home(
-    *, snapshot_dir: Path, attempt_dir: Path, seed: int | None
+    *,
+    snapshot_dir: Path,
+    attempt_dir: Path,
+    seed: int | None,
+    preserve_existing: bool = False,
 ) -> Path:
     home = attempt_dir / "oco-home"
-    if home.exists():
+    if home.exists() and not preserve_existing:
         shutil.rmtree(home)
     for config_name in ("oco", "opencode"):
         target = home / ".config" / config_name
+        if target.exists():
+            shutil.rmtree(target)
         shutil.copytree(snapshot_dir, target)
         if seed is not None:
             _inject_seed(target / "opencode.jsonc", seed)

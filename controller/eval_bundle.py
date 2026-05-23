@@ -63,6 +63,9 @@ def prepare_eval_bundle(
     run_id: str,
     task_manifest_path: Path | None = None,
     conformance: dict[str, Any] | None = None,
+    bundle_stage: str = "single_run",
+    methodology_notes: dict[str, Any] | None = None,
+    classification_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     tasks = read_task_list(task_list_path)
     task_manifest = _load_json(task_manifest_path) if task_manifest_path else None
@@ -104,6 +107,9 @@ def prepare_eval_bundle(
         run_id=run_id,
         task_manifest=task_manifest,
         conformance=conformance,
+        bundle_stage=bundle_stage,
+        methodology_notes=methodology_notes,
+        classification_summary=classification_summary,
     )
     manifest["integrity"] = compute_bundle_integrity(output_dir)
     atomic_write_json(output_dir / MANIFEST_FILENAME, manifest)
@@ -193,6 +199,9 @@ def build_manifest(
     run_id: str,
     task_manifest: dict[str, Any] | None,
     conformance: dict[str, Any] | None,
+    bundle_stage: str = "single_run",
+    methodology_notes: dict[str, Any] | None = None,
+    classification_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     excluded = [decision for decision in decisions if not decision.included]
     included = [decision for decision in decisions if decision.included]
@@ -207,10 +216,13 @@ def build_manifest(
     return {
         "schema_version": 1,
         "run_id": run_id,
+        "bundle_stage": bundle_stage,
         "upstream_evaluator_reference": dict(UPSTREAM_EVALUATOR_REFERENCE),
         "dataset": dataset,
         "bundle_candidate_attempt_count": len(decisions),
         "bundle_candidate_denominator_note": "This is the number of attempts considered for this eval bundle only. The benchmark headline denominator remains the full 731 tasks per plan section 11.3.",
+        "methodology_notes": methodology_notes or {},
+        "classification_summary": classification_summary or {},
         "included_count": len(included),
         "excluded_count": len(excluded),
         "exclusion_reasons_closed_set": list(EXCLUSION_REASONS),

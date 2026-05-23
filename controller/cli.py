@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from controller.constants import QWEN_OUTPUT_TOKEN_LIMIT
 from controller.core import AttemptSpec, BenchmarkController, ControllerConfig
 from controller.fixtures import FixtureOCOAdapter
 
@@ -39,7 +40,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-name", default="selfhost-qwen")
     parser.add_argument("--endpoint-url")
     parser.add_argument("--primary-agent")
+    parser.add_argument(
+        "--output-token-limit", type=int, default=QWEN_OUTPUT_TOKEN_LIMIT
+    )
     parser.add_argument("--disable-boundary", action="store_true")
+    parser.add_argument("--continuation-mode", action="store_true")
     return parser
 
 
@@ -73,7 +78,9 @@ def main(argv: list[str] | None = None) -> int:
         model_name=args.model_name,
         endpoint_url=args.endpoint_url,
         primary_agent=args.primary_agent,
+        output_token_limit=args.output_token_limit,
         disable_boundary=args.disable_boundary,
+        continuation_mode=args.continuation_mode,
     )
     controller = BenchmarkController(config, adapter=adapter)
     controller.run_attempts([AttemptSpec(attempt_id) for attempt_id in args.attempts])

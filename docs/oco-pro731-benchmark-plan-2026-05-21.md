@@ -438,6 +438,47 @@ If any criterion breaks, we fix before paid full-run launch. No mid-run patching
 - Idle auto-stop: triggers only if **no unfinished attempts remain AND no eval backlog AND no controller heartbeat in 30 minutes**. Cannot be fooled by transient stalls.
 - Per-hour cost ledger written to container disk and rsync'd to Mac
 
+### 10.4 First pass and uniform continuation policy
+
+The generation controller reports two generation stages:
+
+1. **First pass** — the initial full-731 attempt set, with one normal OCO run per task. This is reported as its own number. Empty or missing patches count as first-pass failures.
+2. **After uniform continuation** — a second deterministic pass over a predeclared continuation-eligible set. This is the number used to represent the completed full-suite agent run, because serious SWE-bench-style scaffolds run an agent loop until submit, failure, timeout, or turn limit rather than treating one assistant stop as final.
+
+The continuation policy is defined before evaluator outcomes are used. It is not a selective rescue of tasks that failed tests.
+
+Evidence for this policy:
+
+- The SWE-bench Pro paper says Scale used SWE-Agent as the scaffold and gave models a maximum of **200 turns**.
+- The SWE-Agent reproduction config in `scaleapi/SWE-bench_Pro-os` uses `per_instance_call_limit: 150` plus an explicit `submit` action; `review_on_submit` can force another review turn before final submit.
+- The mini-swe-agent SWE-bench config uses `step_limit: 250` and an explicit final command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && git add -A && git diff --cached`.
+- The SWE-bench Pro paper separately analyzes failed trajectories as **Submitted** vs **Not-Submitted** and includes tool-use failures as an official failure-mode bucket. That means non-submission/tool-format failures are real telemetry, but only after the scaffold has given the agent its allowed loop budget.
+
+Continuation-eligible attempts are those that finish the first pass without an evaluator-ready patch and without an explicit final no-fix conclusion or fatal infrastructure corruption. This includes:
+
+- planning / analysis ended with no next action,
+- permission or confirmation asks such as "Should I continue?",
+- malformed tool-call prose/XML emitted as text instead of a real tool call,
+- delegated or midstream cases where PM observed `task:orchestrator` but no patch was captured,
+- output-length stops.
+
+Continuation attempts use one standardized prompt for the whole eligible set. The wording must not mention evaluator results. It should instruct the agent to continue from the existing state, not ask permission, not restate the plan, use real tools rather than prose tool-call markup, resume or inspect child Orchestrator work if relevant, and stop only after producing a non-empty patch or explicitly concluding no viable fix is possible.
+
+Continuation and future runs use the corrected Qwen output-token cap of **81,920** in both control surfaces OCO reads: the materialized model `limit.output` and `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX` in the OCO subprocess environment. The first pass remains reported as the first pass and its already-materialized 32k-cap artifact is not rewritten.
+
+Boundary proof remains methodologically disabled for this high-parallelism run because `strace` wrapping caused EBADF startup failures under parallel launch. Boundary-disabled controller runs must therefore skip `strace` entirely, and `oco-subprocess.json` records the executed command so this is auditable. Background/nohup launch safety is handled by giving OCO subprocesses a safe `/dev/null` stdin rather than inheriting a possibly closed caller fd 0.
+
+We do **not** introduce a new hard 200-turn controller cap mid-run. That would change the benchmark machinery after generation had already started and risk creating another hidden policy variable. Instead, the controller records step/tool counts per attempt. The writeup reports how many attempts exceeded 200 turns or equivalent tool-action cycles and includes a sensitivity table for `<=200` vs `>200` attempts. The primary denominator remains all 731 tasks; no result is filtered out of the headline solely because it exceeded the comparison scaffold's turn budget. If a future replication wants stricter apples-to-apples turn accounting, that should be a separately planned run.
+
+Reporting requirements:
+
+- Report first-pass patch rate and first-pass official eval score separately.
+- Report after-continuation patch rate and official eval score separately.
+- Report the size and composition of the continuation-eligible set.
+- Report turn/tool-count distributions, including count above 200 and a sensitivity table.
+- Keep first-pass and continuation artifacts separate so a reviewer can audit whether continuation was applied uniformly.
+- Disclose any run-setup deviations discovered during generation, including the initial 32k output cap and the decision to disable filesystem `strace` boundary proof during high-parallelism generation.
+
 ## 11. Outputs
 
 ### 11.1 Per-attempt artifacts (container disk, mirrored to Mac via rsync)

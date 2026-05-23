@@ -21,6 +21,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-list", required=True, type=Path)
     parser.add_argument("--task-manifest", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument(
+        "--bundle-stage",
+        default="first_pass_clean",
+        help="Manifest stage label, e.g. first_pass_clean or single_run.",
+    )
     parser.add_argument("--record-conformance", action="store_true")
     parser.add_argument("--upstream-checkout", type=Path)
     return parser
@@ -36,6 +41,11 @@ def main(argv: list[str] | None = None) -> int:
         output_dir=args.output_dir,
         run_id=args.run_id,
         conformance=conformance,
+        bundle_stage=args.bundle_stage,
+        methodology_notes={
+            "first_pass_reported_separately": args.bundle_stage == "first_pass_clean",
+            "headline_denominator": 731,
+        },
     )
     if args.record_conformance:
         conformance = validate_bundle_conformance(

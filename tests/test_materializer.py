@@ -33,6 +33,11 @@ PRODUCTION_PERMISSION_READ = {
 KEPT_AGENT_NAMES = ("pm", "orchestrator", "auditor", "investigator", "compaction")
 
 
+def _materialized_selfhost_target(result) -> dict:
+    config = json.loads(result.config_path.read_text(encoding="utf-8"))
+    return config["provider"]["selfhost"]["models"]["selfhost-qwen"]
+
+
 def _find_oco_binary() -> str | None:
     oco_binary = os.environ.get("OCO_BENCHMARK_TEST_OCO_BINARY") or shutil.which("oco")
     if oco_binary:
@@ -447,6 +452,27 @@ def test_headless_safe_permission_overrides_are_forced_on_every_kept_agent(
     assert overrides["headless_safe_permission_overrides"] == dict(
         HEADLESS_SAFE_PERMISSION_OVERRIDES
     )
+
+
+def test_default_output_token_limit_is_qwen_81920(tmp_path: Path) -> None:
+    production = tmp_path / "prod"
+    production.mkdir()
+    _write_fixture_config(production)
+    output = tmp_path / "snapshot"
+
+    result = materialize_config(
+        MaterializerOptions(
+            production_config_dir=production,
+            output_dir=output,
+            endpoint_url="http://localhost:8001/v1",
+            api_key="test-key",
+        )
+    )
+
+    target = _materialized_selfhost_target(result)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert target["limit"]["output"] == 81920
+    assert manifest["benchmark_overrides"]["output_token_limit"] == 81920
 
 
 def test_materialized_snapshot_is_valid_oco_config(tmp_path: Path) -> None:

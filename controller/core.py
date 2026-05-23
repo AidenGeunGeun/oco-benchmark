@@ -16,6 +16,7 @@ from controller.boundary import (
     BoundaryMonitor,
     default_real_boundary_config,
 )
+from controller.constants import QWEN_OUTPUT_TOKEN_LIMIT
 from controller.fixtures import FixtureOCOAdapter
 from controller.leases import LeaseManager
 from controller.materializer import MaterializerOptions, materialize_config
@@ -66,11 +67,12 @@ class ControllerConfig:
     endpoint_url: str | None = None
     api_key: str | None = None
     context_window: int = 200000
-    output_token_limit: int = 32768
+    output_token_limit: int = QWEN_OUTPUT_TOKEN_LIMIT
     primary_agent: str | None = None
     real_oco_timeout_seconds: float = 1800.0
     boundary_config: BoundaryConfig | None = None
     disable_boundary: bool = False
+    continuation_mode: bool = False
 
 
 class BenchmarkController:
@@ -150,6 +152,9 @@ class BenchmarkController:
                 config_snapshot_dir=self.run_paths.config_snapshot_dir,
                 agent=self.config.primary_agent,
                 timeout_seconds=self.config.real_oco_timeout_seconds,
+                filesystem_trace_enabled=not self.config.disable_boundary,
+                output_token_limit=self.config.output_token_limit,
+                preserve_existing_home=self.config.continuation_mode,
             )
         return FixtureOCOAdapter()
 

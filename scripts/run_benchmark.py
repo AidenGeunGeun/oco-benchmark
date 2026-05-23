@@ -28,6 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from controller.constants import QWEN_OUTPUT_TOKEN_LIMIT  # noqa: E402
 from controller.core import AttemptSpec, BenchmarkController, ControllerConfig  # noqa: E402
 from controller.repo_cache import RepoCacheManager  # noqa: E402
 
@@ -46,8 +47,21 @@ Problem statement:
 {problem_statement}
 """
 
+DEFAULT_CONTINUATION_PROMPT_FILE = (
+    PROJECT_ROOT / "prompts.qwen" / "post_first_pass_continuation.txt"
+)
 
-def build_prompt(task_row: dict) -> str:
+
+def build_prompt(
+    task_row: dict, *, prompt_mode: str = "first-pass", continuation_prompt: str = ""
+) -> str:
+    if prompt_mode == "continuation":
+        return (
+            continuation_prompt.rstrip()
+            + "\n\nProblem statement:\n\n"
+            + str(task_row["problem_statement"])
+            + "\n"
+        )
     return PROMPT_TEMPLATE.format(problem_statement=task_row["problem_statement"])
 
 
@@ -130,6 +144,29 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip strace-wrapped boundary proof. Use only when strace is unavailable.",
     )
+    parser.add_argument(
+        "--output-token-limit",
+        type=int,
+        default=QWEN_OUTPUT_TOKEN_LIMIT,
+        help="OCO output-token cap for model.limit.output and OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX (default: 81920).",
+    )
+    parser.add_argument(
+        "--prompt-mode",
+        choices=("first-pass", "continuation"),
+        default="first-pass",
+        help="Use the normal task prompt or the standardized post-first-pass continuation prompt.",
+    )
+    parser.add_argument(
+        "--continuation-prompt-file",
+        type=Path,
+        default=DEFAULT_CONTINUATION_PROMPT_FILE,
+        help="Prompt file used when --prompt-mode=continuation.",
+    )
+    parser.add_argument(
+        "--continuation-mode",
+        action="store_true",
+        help="Preserve copied attempt OCO state and skip SETUP-prepared attempts for continuation waves.",
+    )
     return parser
 
 
@@ -161,13 +198,30 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  ... and {len(missing) - 10} more", file=sys.stderr)
         return 3
 
+    continuation_prompt = ""
+    if args.prompt_mode == "continuation":
+        try:
+            continuation_prompt = args.continuation_prompt_file.read_text(
+                encoding="utf-8"
+            )
+        except OSError as exc:
+            print(
+                f"FAILED: could not read continuation prompt {args.continuation_prompt_file}: {exc}",
+                file=sys.stderr,
+            )
+            return 4
+
     specs: list[AttemptSpec] = []
     for tid in ids:
         row = tasks[tid]
         specs.append(
             AttemptSpec(
                 attempt_id=tid,
-                prompt=build_prompt(row),
+                prompt=build_prompt(
+                    row,
+                    prompt_mode=args.prompt_mode,
+                    continuation_prompt=continuation_prompt,
+                ),
                 base_commit=row["base_commit"],
                 repo=row["repo"],
                 repo_url=row["repo_url"],
@@ -187,6 +241,8 @@ def main(argv: list[str] | None = None) -> int:
         force_rerun=set(args.force_rerun),
         real_oco_timeout_seconds=args.timeout_seconds,
         disable_boundary=args.disable_boundary,
+        output_token_limit=args.output_token_limit,
+        continuation_mode=args.continuation_mode or args.prompt_mode == "continuation",
     )
 
     repo_cache = RepoCacheManager(

@@ -1,0 +1,12 @@
+You are continuing an existing non-interactive SWE-bench Pro benchmark attempt in the checked-out repository at the current working directory.
+
+Continue from the current repository and OCO state. Do not ask for permission, do not ask clarifying questions, and do not restate the plan as the final answer.
+
+Use real tools for every file inspection, edit, and command. Do not write prose that imitates XML, JSON, function calls, shell sessions, or tool-call markup; if a tool action is needed, invoke the actual tool.
+
+If previous Orchestrator or subagent work is visible in the current state, inspect or resume it as needed rather than starting from scratch. Keep all work inside the current repository, and do not read secrets or .env files.
+
+Stop only after one of these outcomes is true:
+
+1. The repository contains a non-empty evaluator-ready patch in the working tree.
+2. You have verified that no viable fix is possible for this task and state that conclusion explicitly.
