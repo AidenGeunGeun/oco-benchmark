@@ -29,9 +29,17 @@ Full plan: [`docs/oco-pro731-benchmark-plan-2026-05-21.md`](docs/oco-pro731-benc
 
 The benchmark normally mirrors the production OCO prompts. For Qwen-family self-hosted models only, the config materializer applies the pod-only `prompts.qwen/` overlay for PM and Orchestrator. The overlay preserves the production prompt structure but strengthens benchmark-critical delegation, spec, autocompaction, and audit-loop rules into RFC2119 `MUST` language so Qwen follows the same PM → Orchestrator → Auditor protocol expected from stronger production models. Non-Qwen materialized snapshots keep production prompt bytes unchanged.
 
-## Status
+## Status (2026-05-23)
 
-Controller implementation is in progress: the dry-run lifecycle, real-OCO adapter wiring, pinned SWE-bench Pro task loader, eval-bundle preparation, Modal pipeline contracts, and SSH rsync backup path are implemented and covered by offline tests. Paid pod launch, calibration, and the full 731 run are still pending.
+H200 SXM Community Cloud pod live. vLLM serving Qwen3.6-27B-FP8 with MTP-4 locked from the §4.4 A/B. Formal calibration was skipped after a single-task verification ran clean; the full 731 first pass was launched directly at c=14.
+
+- **First pass** complete: 596 / 731 evaluator-ready patches (81.5% raw patch rate). Generation wall ~10 h.
+- **Post-first-pass classification** of the 135 first-pass no-patch attempts: 123 output-length stops (first-pass 32k cap bug, fixed for recovery), 6 real subprocess/provider failures, 3 stopped no-patch, 2 malformed tool-call prose, 1 timeout.
+- **Recovery wave** in flight: 50-task continuation (true resume from copied state) + 78-task fresh rerun (worktrees were cleaned during a first-pass disk-recovery pass), both with the corrected 81,920 output cap, running in parallel under one c=14 budget.
+- **Modal evaluation** is the next phase once recovery completes.
+
+Methodology, deviations from plan, and reporting policy: [`docs/methodology-notes.md`](docs/methodology-notes.md).
+Post-first-pass tooling and classifier details: [`docs/post-first-pass-continuation-and-eval-prep.md`](docs/post-first-pass-continuation-and-eval-prep.md).
 
 ## Requirements
 
