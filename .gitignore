@@ -26,6 +26,16 @@ venv/
 *.tmp
 /tmp/
 
+# LaTeX build byproducts (keep PDFs/source explicit)
+*.aux
+*.bbl
+*.blg
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
 # Secrets — never commit
 .env
 .env.local

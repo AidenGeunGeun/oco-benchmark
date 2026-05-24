@@ -1,68 +1,87 @@
-# oco-benchmark
+# OpenCodeOrchestra SWE-bench Pro Pilot
 
-Benchmark harness for **OpenCodeOrchestra (OCO)** on the SWE-bench Pro public test set.
+This repository contains the benchmark harness, methodology notes, and report scaffold for evaluating **OpenCodeOrchestra (OCO)** on SWE-bench Pro.
 
-This project is a *consumer* of OCO. It invokes the installed `oco` CLI binary and measures its performance against the full 731-task public SWE-bench Pro test set, using a self-hosted Qwen3.6-27B-FP8 inference server.
+OCO is a fork/extension of `opencode` focused on long-horizon coding-agent workflows: a Project Manager agent delegates to a persistent Orchestrator, which can call specialist agents such as Investigator and Auditor. The benchmark harness in this repo is a **consumer** of OCO: it invokes an installed `oco` CLI binary, isolates per-attempt runtime state, collects telemetry, prepares SWE-bench Pro evaluation bundles, and records methodology decisions.
 
-It does **not** modify or depend on OCO source. Anyone with `oco` on their PATH and a vLLM-capable GPU can clone this repo and reproduce the benchmark.
+This is an **engineering/ML-systems pilot**, not a leaderboard claim.
 
-## What this measures
+## Main result
 
-- Pass rate of OCO + Qwen3.6-27B-FP8 on SWE-bench Pro public 731 tasks.
-- Token usage, wall time, and inferred infrastructure cost per attempt and per run.
-- Audit-observed vs audit-missing performance split (descriptive strata, not a denominator filter).
+The strongest positive result came from an earlier **Runpod B200** seeded-subset pilot using **Qwen3.6-27B-FP8** on a 250-task seeded subset of the SWE-bench Pro public split. The model was served with the Runpod `vllm/vllm-openai:latest` pod template. **Speculative decoding was not used** for this B200/FP8 pilot.
 
-## Architecture (planned)
+> Evidence note: earlier B200/NVFP4 experiments existed, and some legacy filenames still say `old-nvfp4`. The archived final methodology note for the 223-row submitted positive bundle records `Qwen/Qwen3.6-27B-FP8`, B200, non-MTP. This README follows that archived final methodology record.
 
-Everything runs on a single GPU pod, eliminating the public-internet hop between agent and model that caused most of the wasted compute in earlier ad-hoc runs.
+| Framing | Result | Wilson 95% CI | Interpretation |
+|---|---:|---:|---|
+| Artifact-adjusted diagnostic | **162 / 219 = 74.0%** | **67.8%–79.3%** | Excludes only evaluator/tooling artifacts where the evaluator did not meaningfully test the patch. |
+| Strict submitted-row | **162 / 223 = 72.6%** | **66.4%–78.1%** | Counts all submitted evaluator rows, including real `tests: []` non-resolutions, as non-pass. |
+| Known-only diagnostic | **162 / 205 = 79.0%** | **72.9%–84.0%** | Excludes all empty-test outputs; optimistic diagnostic only. |
+| Conservative seeded-subset | **162 / 250 = 64.8%** | **58.7%–70.5%** | Treats unevaluated/non-submitted seeded-subset rows as non-pass. |
 
-- **GPU pod** (Runpod H200 SXM):
-  - vLLM serving `Qwen/Qwen3.6-27B-FP8` on `localhost:8000`
-  - Benchmark controller, a long-lived state machine driving attempt phases
-  - OCO worker subprocesses talking to vLLM over localhost. The controller invokes PM only; Orchestrator, Auditor, and Investigator are subagents the PM chooses to call as needed.
-- **Modal**: SWE-bench Pro official evaluator, fired per-patch as patches land
-- **Local machine** (Mac): SSH terminal for status and final artifact pull. Not on the hot path during the run.
+The recommended public phrasing is:
 
-Full plan: [`docs/oco-pro731-benchmark-plan-2026-05-21.md`](docs/oco-pro731-benchmark-plan-2026-05-21.md).
+> OCO with Qwen3.6-27B-FP8 on a non-speculative B200 serving profile resolved 162 tasks in a 223-row SWE-bench Pro seeded-subset pilot. Strict score over submitted evaluator rows was 72.6%; artifact-adjusted diagnostic score was 74.0% after excluding only evaluator/tooling artifacts where the evaluator did not meaningfully test the patch.
 
-## Qwen prompt variant policy
+See [`docs/result-summary.md`](docs/result-summary.md) for the frozen result table, denominator policy, per-repo replay breakdown, and sanity-witness checks.
 
-The benchmark normally mirrors the production OCO prompts. For Qwen-family self-hosted models only, the config materializer applies the pod-only `prompts.qwen/` overlay for PM and Orchestrator. The overlay preserves the production prompt structure but strengthens benchmark-critical delegation, spec, autocompaction, and audit-loop rules into RFC2119 `MUST` language so Qwen follows the same PM → Orchestrator → Auditor protocol expected from stronger production models. Non-Qwen materialized snapshots keep production prompt bytes unchanged.
+## Important caveats
 
-## Status (2026-05-23)
+- This was a **seeded 250-task subset**, not the full 731-task public SWE-bench Pro split.
+- There is no matched same-model/same-serving baseline against mini-SWE-agent, SWE-agent, OpenHands, or a single-agent OCO variant.
+- The audit loop was available in OCO but not consistently enforced/observed in the positive pilot, so this should not be described as an isolated audit-loop result.
+- The artifact-adjusted number is a diagnostic validation-quality number, not a replacement for strict reporting.
+- The result is best understood as evidence that orchestration/runtime design and serving configuration are important variables for coding-agent performance, not as proof that OCO is state of the art.
 
-H200 SXM Community Cloud pod live. vLLM serving Qwen3.6-27B-FP8 with MTP-4 locked from the §4.4 A/B. Formal calibration was skipped after a single-task verification ran clean; the full 731 first pass was launched directly at c=14.
+## Negative result: serving-profile collapse
 
-- **First pass** complete: 596 / 731 evaluator-ready patches (81.5% raw patch rate). Generation wall ~10 h.
-- **Post-first-pass classification** of the 135 first-pass no-patch attempts: 123 output-length stops (first-pass 32k cap bug, fixed for recovery), 6 real subprocess/provider failures, 3 stopped no-patch, 2 malformed tool-call prose, 1 timeout.
-- **Recovery wave** in flight: 50-task continuation (true resume from copied state) + 78-task fresh rerun (worktrees were cleaned during a first-pass disk-recovery pass), both with the corrected 81,920 output cap, running in parallel under one c=14 budget.
-- **Modal evaluation** is the next phase once recovery completes.
+A later full 731-task run using a new standalone controller with H200 FP8 + MTP-4 generated much worse patches. Official Modal evaluation on the full run produced 208 pass / 310 fail / 213 empty-test outputs over 731 tasks.
 
-Methodology, deviations from plan, and reporting policy: [`docs/methodology-notes.md`](docs/methodology-notes.md).
-Post-first-pass tooling and classifier details: [`docs/post-first-pass-continuation-and-eval-prep.md`](docs/post-first-pass-continuation-and-eval-prep.md).
+This was not primarily an evaluator problem. Replaying the old B200 patch bundle through the same current Modal/evaluator path reproduced the earlier result at roughly 70–73%. Five old-pass/current-regressed witness tasks showed ordinary code-quality regressions in the new run: undefined symbols, incomplete APIs, build failures, and semantic mismatches.
 
-## Requirements
+The lesson is not “MTP is bad” or “FP8 is bad.” The defensible conclusion is narrower:
 
-- `oco` 2.1.7+ installed and on PATH (built from the OCO source tree, contains glob/grep timeout guards and the `experimentalNonStreamingToolCalls` provider option)
-- A Runpod account with H200 SXM access
-- A Modal account (free tier sufficient for the full 731 eval; cost ~$10)
-- Python 3.13+ on the local machine
+> Throughput-optimized serving profiles can silently change generation quality for hard coding-agent workloads. Direct token-throughput A/B tests are not enough; serving changes need quality A/B tests on representative agent tasks.
 
-## Project layout
+See [`docs/h200-fp8-mtp4-collapse.md`](docs/h200-fp8-mtp4-collapse.md) and [`docs/current-vs-nvfp4-regression-forensics.md`](docs/current-vs-nvfp4-regression-forensics.md).
 
+## Repository map
+
+| Path | Purpose |
+|---|---|
+| [`controller/`](controller/) | Benchmark controller: attempt lifecycle, OCO subprocess adapter, materializer, eval bundle tooling. |
+| [`scripts/`](scripts/) | CLI entry points for task materialization, benchmark launch, post-first-pass classification, eval bundle preparation. |
+| [`docs/result-summary.md`](docs/result-summary.md) | Frozen positive pilot result and denominator policy. |
+| [`docs/methodology-notes.md`](docs/methodology-notes.md) | Live-run methodology notes for the H200/FP8 full-run attempt. |
+| [`docs/h200-fp8-mtp4-collapse.md`](docs/h200-fp8-mtp4-collapse.md) | Clean writeup of the serving-profile collapse. |
+| [`docs/related-work-positioning.md`](docs/related-work-positioning.md) | Research-positioning memo and venue/claim guidance. |
+| [`paper/`](paper/) | Technical-report source, compiled PDF, bibliography, and claims/threats companion note. |
+| [`specs/`](specs/) | Implementation specs used while building the benchmark harness. |
+| [`tests/`](tests/) | Unit tests for controller, materializer, telemetry, eval-bundle, and post-first-pass tooling. |
+
+Large run artifacts are intentionally not committed to Git. The local long-term archive lives on external storage under:
+
+```text
+/Volumes/external-nvme/oco-benchmark-archive/oco-vs-mini-swe-agent/
 ```
-oco-benchmark/
-├── docs/         # Plan, methodology notes, post-run writeups
-├── specs/        # Implementation specs (created when work is delegated)
-├── controller/   # Benchmark state machine + OCO session management
-├── scripts/      # CLI entry points (run, status, prepare, eval)
-├── config/       # Locked vLLM serving profile, evaluator config, benchmark config
-└── tests/        # Unit tests for state machine, parsers, artifact writers
-```
 
-## Prior art
+## Current public framing
 
-This repo supersedes the older `OCstuff/benchmarks/oco-vs-mini-swe-agent/` directory, which served as a calibration ground. That work is preserved on external storage as a historical reference; this is the clean rebuild.
+The most credible artifact today is a **technical report / systems case study**:
+
+1. OCO implements durable multi-agent orchestration concepts for repository-level coding agents.
+2. A seeded SWE-bench Pro pilot with a small open model produced an unusually strong result under transparent denominators.
+3. A later full-run serving-profile change caused a generation-side collapse, demonstrating that deployment profile is a first-class experimental variable.
+4. The work is not yet a controlled benchmark paper because it lacks a matched baseline and full controlled ablations.
+
+## Requirements for rerunning the harness
+
+- OCO 2.1.8+ installed and on `PATH`.
+- Python 3.13+.
+- A vLLM-compatible GPU serving a Qwen/OpenAI-compatible endpoint.
+- Modal credentials for official SWE-bench Pro evaluation if using the Modal path.
+
+See [`docs/final-run-and-modal-eval-runbook.md`](docs/final-run-and-modal-eval-runbook.md) for operational details from the completed run.
 
 ## License
 

@@ -71,17 +71,71 @@ Both sub-waves run concurrently against the same vLLM endpoint, c=14 total (5 co
 
 Continuation prompt is evaluator-blind. It instructs the agent to continue from existing state, not ask permission, not restate the plan, use real tools rather than prose tool-call markup, inspect/resume child Orchestrator work if relevant, and stop only after producing a non-empty patch or explicitly concluding no viable fix is possible.
 
+## 7.1 Final generation state and bundle sanitization
+
+Final generation reached **731 / 731 non-empty evaluator-ready patches** after staged continuation waves. Source counts by winning patch source:
+
+| Source | Count |
+|---|---:|
+| First pass | 596 |
+| Continuation | 43 |
+| Fresh rerun | 53 |
+| Wave3 | 30 |
+| Wave4 | 7 |
+| Wave5 | 1 |
+| Wave8 | 1 |
+
+The final raw generated bundle is preserved on the pod at `/workspace/runs/swepro731-final-eval-bundle-20260523T184500Z`:
+
+- `patches.json`: 421,863,677 bytes, SHA-256 `ab62a826df3179e56307f1e321708111ffa4cfb8bd3eab8a7a66d9766cac2252`
+- `raw_sample.jsonl`: 24,882,595 bytes, SHA-256 `2f6a2a5568edb0518ccd62606d24446e87c72a9eda72974d3cc5042185466843`
+- `decisions.json`: 234,195 bytes, SHA-256 `d48cfcdded53334fe2031961cbdd4705bffc9c1f371de0e4cd9bdfe4629cf1a6`
+- bundle integrity SHA-256 `ce371837a155c9a26c2185519f28839c55fd794650d475484ec123f670fc8d5e`
+
+Before official evaluation, generated/binary/build artifacts were removed from patches to produce a source-patch eval bundle. This is not hidden filtering: the raw bundle is preserved, the removal policy is recorded, and every removed file diff is listed in `removed-generated-artifacts.json`.
+
+Primary official-eval bundle: `/workspace/runs/swepro731-final-eval-bundle-sanitized-20260523T190000Z`:
+
+- `patches.json`: 18,460,372 bytes, SHA-256 `650efe3d5e0815b1bca5dab9281a027ced8b2324b8fe8630093d4ca2d175aa4e`
+- `raw_sample.jsonl`: 24,882,595 bytes, SHA-256 `2f6a2a5568edb0518ccd62606d24446e87c72a9eda72974d3cc5042185466843`
+- `decisions.json`: 234,195 bytes, SHA-256 `d48cfcdded53334fe2031961cbdd4705bffc9c1f371de0e4cd9bdfe4629cf1a6`
+- `removed-generated-artifacts.json`: 269,648 bytes, SHA-256 `2e15f50a12e2d77226db46981935b2f78669f1b6d21c93fbd0dc44b6a8bda960`
+- bundle integrity SHA-256 `6369fb18471b8b02b217896dc9a8fb433b6cd6b606942506058ebb34507e6570`
+
+Sanitization removed 1,494 file diffs / 397,048,628 bytes. Removed categories: generated binaries named `flipt`, `tsh`, `tctl`; `.cue-src/`; paths containing `/node_modules/`, `/dist/`, `/build/`, `/coverage/`; files ending `.map` or `.min.js`. The sanitized bundle validates at 731 patch rows, 731 raw rows, 0 empty patches, no duplicate IDs, and no task/raw/patch ID mismatch. Largest remaining patch is ~617 KB.
+
 ## 8. Reporting policy (writeup)
 
 Pass rate is reported in three stages over the same 731-task denominator:
 
 - **First pass only** — generation completed with original 32k cap. Empty/missing patches count as fails.
 - **First pass + continuation** — adds the 50 true-continuation results.
-- **First pass + continuation + fresh rerun** — adds the 78 fresh reruns. This is the headline.
+- **First pass + continuation + fresh rerun** — adds the 78 fresh reruns. This is the pre-Wave3 recovery state.
+- **First pass + continuation + fresh rerun + Wave3** — continued 39 remaining no-patch tasks while they were still well below the agent-loop budget; resulted in 722 / 731 evaluator-ready patches.
+- **Final generated source-patch bundle** — all continuation waves complete, generated/binary artifacts removed with a recorded policy, and 731 / 731 non-empty source patches ready for official Modal evaluation.
 
 No tasks are filtered out of any stage. The 7 non-eligible failures (6 infra + 1 timeout) count as fails in every stage. This mirrors how serious SWE-bench scaffolds (`scaleapi/SWE-bench_Pro-os` SWE-Agent config with `per_instance_call_limit: 150`; mini-swe-agent with `step_limit: 250` + explicit submit) treat their agent loop budget — fail at the limit, not on the first assistant stop.
 
 Supplementary tables in the writeup (per plan §11.4): Wilson 95% binomial CI on the headline, per-repo breakdown across the 11 Pro repos, per-stratum (`delegation_observed` / `audit_observed` / `full_loop_observed`), token-economy table + prefix-cache hit rate + compaction-token share, realized cost ledger, thinking-token diagnostic, turn-count sensitivity (≤ 200 vs > 200).
+
+The live execution runbook and Modal checklist are in [`final-run-and-modal-eval-runbook.md`](final-run-and-modal-eval-runbook.md). That document records the current official-eval launch state and gotchas.
+
+## 8.1 Agent-loop continuation policy
+
+After the first recovery wave, disk-verified totals were 692 evaluator-ready patches and 39 no-patch attempts across the full 731 task set. The 39 no-patch attempts were still well below the SWE-bench Pro paper's reported agent-loop budget, so Wave3 was launched:
+
+- 33 attempts continue from the latest saved state (`worktree` + `oco-home` available).
+- 6 attempts rerun fresh because earlier live-run disk cleanup removed their worktrees.
+- Wave3 used the corrected 81,920 output cap and the standardized continuation prompt where state existed.
+- After Wave3, 9 tasks still had no patch. Because those tasks remained far below the agent-loop budget, later uniform continuation waves proceeded until every task had a non-empty patch.
+
+This preserves both sides of the methodology: the run gives the agent-loop a fair chance, but the final denominator is still all 731 tasks with no after-the-fact filtering. Wave count is an operational artifact; cumulative per-task budget is the methodological rule.
+
+## 8.2 Modal evaluation launch state
+
+Modal evaluation is being prepared on the pod because the sanitized bundle could not be transferred cleanly through Catbox/Litterbox or Runpod's SSH proxy. Modal credentials were copied to `/root/.modal.toml` on the pod and verified against profile `aidengeungeun`; remove that file after evaluation.
+
+The pinned evaluator checkout is `vendor/SWE-bench_Pro-os` at commit `ca10a60a5fcae51e6948ffe1485d4153d421e6c5`. Run `swe_bench_pro_eval.py` from inside that checkout because the evaluator resolves `dockerfiles/` relative to current working directory. The Docker Hub username for official prebuilt images is `jefzda`. Modal is the default path; do not pass `--use_local_docker` on the pod.
 
 ## 9. Known parser and provider artifacts
 

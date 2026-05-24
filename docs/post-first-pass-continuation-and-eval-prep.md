@@ -72,3 +72,38 @@ First-pass, continuation, and combined bundles stay separate:
 - **Post-continuation final bundle**: continuation patches take precedence for continued attempts; otherwise first-pass clean patches are used. For attempts that fell into the fresh-rerun sub-wave, the rerun patch is treated as the post-continuation result for that attempt. The manifest records patch source counts (`first_pass` / `continuation` / `rerun`) and preserves the 731 denominator note.
 
 Turn-count sensitivity is preserved. The classifier reports step/tool-count distributions and IDs above 200; no new hard 200-turn cap is added.
+
+## Wave3 and later continuation waves
+
+After the continuation + fresh-rerun recovery wave, the combined generation state was verified from disk as 692 evaluator-ready patches and 39 remaining no-patch tasks across the full 731-task set.
+
+The 39 were split by state availability:
+
+- 33 with usable latest state (`worktree` + `oco-home`) copied into the Wave3 run root;
+- 6 without usable worktree state, rerun fresh from base commit.
+
+Wave3 was launched because the remaining attempts were still well below the comparison scaffold's turn budget. The later stopping rule is cumulative per-task agent-loop budget, not the wave number.
+
+Operational notes from Wave3 setup:
+
+- Parallel drivers raced on config snapshot materialization; the safe workaround is to prime the run root with one single-ID driver, then fan out the remaining shards after `oco-config-snapshot/` exists.
+- Pod-local RAM watermark code was corrected to use `/proc/meminfo` `MemAvailable` rather than `MemFree`; this must be committed before future paid runs.
+- `max_ram_pause_checks` was increased to tolerate temporary memory pressure instead of exiting after a short wait.
+
+## Later continuation waves and final source-patch bundle
+
+After Wave3, 9 tasks still had no patch. Under the agreed agent-loop budget policy, these were still well below the comparison scaffold's turn budget, so continuation proceeded uniformly rather than stopping on an arbitrary wave count. Final generation reached 731 / 731 non-empty patches after Wave8.
+
+The winning patch source counts were:
+
+- first pass: 596
+- continuation: 43
+- fresh rerun: 53
+- Wave3: 30
+- Wave4: 7
+- Wave5: 1
+- Wave8: 1
+
+The raw final bundle is preserved at `/workspace/runs/swepro731-final-eval-bundle-20260523T184500Z`. The primary official-evaluation bundle is the sanitized source-patch bundle at `/workspace/runs/swepro731-final-eval-bundle-sanitized-20260523T190000Z`.
+
+Sanitization removed generated/binary/build artifacts while preserving all 731 task rows. Removed diffs are recorded in `removed-generated-artifacts.json`. The removal policy drops generated binaries named `flipt`, `tsh`, and `tctl`; `.cue-src/`; paths containing `/node_modules/`, `/dist/`, `/build/`, `/coverage/`; and files ending `.map` or `.min.js`. This reduced `patches.json` from 421,863,677 bytes to 18,460,372 bytes while keeping 731 / 731 non-empty patches.
