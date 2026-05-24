@@ -3,13 +3,12 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{array}
 \usepackage{booktabs}
+\usepackage{float}
 \usepackage{hyperref}
 \usepackage{microtype}
 \usepackage{tikz}
-\usepackage{pgfplots}
 \usepackage{xcolor}
 \usetikzlibrary{arrows.meta, positioning, calc}
-\pgfplotsset{compat=1.18}
 \setlength{\emergencystretch}{3em}
 \renewcommand{\arraystretch}{1.18}
 
@@ -19,6 +18,10 @@
 \definecolor{ocoGray}{HTML}{EDEDED}
 \definecolor{ocoDark}{HTML}{222222}
 \definecolor{ocoMute}{HTML}{8C9098}
+\definecolor{scaleSky}{HTML}{6EC7E8}
+\definecolor{scaleSalmon}{HTML}{E97755}
+\definecolor{scalePurple}{HTML}{5F8FD3}
+\definecolor{scalePink}{HTML}{D86BB0}
 
 \title{Harness and Serving-Profile Effects on SWE-bench Pro:\\
 An Evidence-First Case Study with OpenCodeOrchestra and Qwen3.6-27B}
@@ -69,14 +72,13 @@ Inference serving is an underreported variable in coding-agent studies. Quantiza
 
 OCO extends opencode with a Project Manager $\rightarrow$ Orchestrator $\rightarrow$ specialist-agent workflow. PM gathers context and writes a task-local spec; Orchestrator owns implementation; Investigator and Auditor support evidence gathering and review. OCO source: \url{https://github.com/AidenGeunGeun/OpenCodeOrchestra} \cite{kim2026opencodeorchestra}. The benchmarked setup used OCO as an installed CLI; the benchmark repository does not modify OCO source.
 
-\begin{figure}[ht]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[
   node distance=1.1cm and 1.4cm,
   primary/.style={draw, rounded corners=3pt, minimum width=3.0cm, minimum height=1.15cm, align=center, font=\small, fill=ocoTeal!18, draw=ocoTeal!75!black, line width=0.7pt},
-  specialist/.style={draw, rounded corners=3pt, minimum width=3.0cm, minimum height=1.0cm, align=center, font=\small, fill=ocoGray, draw=ocoDark!55, line width=0.6pt},
-  flow/.style={-Latex, line width=0.9pt, draw=ocoDark!75},
-  support/.style={-Latex, line width=0.6pt, draw=ocoMute, dashed}
+  specialist/.style={draw, rounded corners=2pt, minimum width=3.0cm, minimum height=1.0cm, align=center, font=\small, fill=ocoGray, draw=ocoDark!55, line width=0.6pt},
+  flow/.style={-Latex, line width=0.9pt, draw=ocoDark!75}
 ]
 \node[primary] (pm) {\textbf{Project Manager}\\\footnotesize plans, writes spec};
 \node[primary, right=of pm] (orch) {\textbf{Orchestrator}\\\footnotesize implements, edits, tests};
@@ -86,12 +88,9 @@ OCO extends opencode with a Project Manager $\rightarrow$ Orchestrator $\rightar
 
 \node[specialist, below=1.1cm of pm.south east, xshift=-0.0cm] (inv) {\textbf{Investigator}\\\footnotesize source-level evidence};
 \node[specialist, below=1.1cm of orch.south east, xshift=0.0cm] (aud) {\textbf{Auditor}\\\footnotesize review, risk, regression};
-
-\draw[support] (pm.south) to[bend right=15] (inv.north);
-\draw[support] (orch.south) to[bend right=15] (aud.north);
-\draw[support] (inv.east) to[bend right=10] (orch.south west);
+\node[font=\footnotesize, text=ocoMute, below=0.35cm of $(inv)!0.5!(aud)$] {specialists are called on demand; they support the main flow rather than owning it};
 \end{tikzpicture}
-\caption{OCO workflow. PM owns task framing; Orchestrator owns implementation. Specialists are pulled in on demand (dashed) and return evidence or review back into the main flow.}
+\caption{OCO workflow. PM owns task framing; Orchestrator owns implementation. Investigator and Auditor are support roles rather than extra implementation owners.}
 \label{fig:arch}
 \end{figure}
 
@@ -113,21 +112,17 @@ Benchmark boundary & The benchmark consumes an installed OCO CLI and must not pa
 
 \section{Experimental Protocol and Evidence Chain}
 
-\begin{figure}[ht]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[
   node distance=0.55cm,
-  stage/.style={draw, rounded corners=3pt, minimum height=1.25cm, minimum width=2.8cm, align=center, font=\small, line width=0.6pt},
-  source/.style={stage, fill=ocoBlue!12, draw=ocoBlue!75!black},
-  subset/.style={stage, fill=ocoTeal!18, draw=ocoTeal!80!black},
-  bundle/.style={stage, fill=ocoOrange!18, draw=ocoOrange!80!black},
-  result/.style={stage, fill=ocoGray, draw=ocoDark!55},
+  stage/.style={draw, rectangle, minimum height=1.25cm, minimum width=2.8cm, align=center, font=\small, line width=0.6pt, fill=white},
   flow/.style={-Latex, line width=0.9pt, draw=ocoDark!75}
 ]
-\node[source] (a) {Public Pro\\\footnotesize 731 rows};
-\node[subset, right=of a] (b) {Seeded 250\\\footnotesize subset};
-\node[bundle, right=of b] (c) {223 submitted\\\footnotesize clean patches};
-\node[result, right=of c] (d) {Replay\\\footnotesize 162 / 43 / 18};
+\node[stage] (a) {Public Pro\\\footnotesize 731 rows};
+\node[stage, right=of a] (b) {Seeded 250\\\footnotesize subset};
+\node[stage, right=of b] (c) {223 submitted\\\footnotesize clean patches};
+\node[stage, right=of c] (d) {Replay\\\footnotesize 162 / 43 / 18};
 \draw[flow] (a) -- (b);
 \draw[flow] (b) -- (c);
 \draw[flow] (c) -- (d);
@@ -189,66 +184,75 @@ Conservative seeded-subset & 162 / 250 & 64.8\% & 58.7--70.5\% \\
 
 Manual inspection of the 18 empty-test replay rows found no hidden wins. Four were evaluator/tooling artifacts where no meaningful patch test occurred. Fourteen were real non-resolutions visible in build, import, runtime, or test-collection logs.
 
-\begin{figure}[ht]
+\begin{figure}[H]
 \centering
-\begin{tikzpicture}
-\begin{axis}[
-  xbar,
-  width=0.95\linewidth,
-  height=10.5cm,
-  bar width=11pt,
-  xmin=0, xmax=100,
-  xlabel={\small Pilot pass rate (\%) with Wilson 95\% CI},
-  symbolic y coords={NodeBB,Tutanota,Qutebrowser,Flipt,Element,Navidrome,Teleport,OpenLibrary,Ansible,Vuls,ProtonMail},
-  ytick=data,
-  yticklabels={%
-    NodeBB \scriptsize 39.1\% (9/23),%
-    Tutanota \scriptsize 66.7\% (10/15),%
-    Qutebrowser \scriptsize 66.7\% (14/21),%
-    Flipt \scriptsize 71.4\% (15/21),%
-    Element \scriptsize 72.7\% (16/22),%
-    Navidrome \scriptsize 76.2\% (16/21),%
-    Teleport \scriptsize 76.2\% (16/21),%
-    OpenLibrary \scriptsize 81.8\% (18/22),%
-    Ansible \scriptsize 83.3\% (15/18),%
-    Vuls \scriptsize 84.2\% (16/19),%
-    ProtonMail \scriptsize 85.0\% (17/20)},
-  yticklabel style={align=right, font=\small},
-  axis y line*=left,
-  axis x line*=bottom,
-  xtick={0,20,40,60,80,100},
-  enlarge y limits=0.06,
-  major grid style={line width=0.1pt,draw=gray!25},
-  xmajorgrids,
-  tick align=outside,
-  tick label style={font=\small},
-  ylabel style={font=\small},
-  label style={font=\small}
-]
-\addplot+[
-  fill=ocoTeal!60,
-  draw=ocoTeal!90!black,
-  line width=0.4pt,
-  error bars/.cd,
-  x dir=both, x explicit,
-  error bar style={black, line width=0.55pt},
-  error mark options={mark size=2pt, line width=0.55pt}
-] coordinates {
-  (39.1,NodeBB) +- (16.9,20.1)
-  (66.7,Tutanota) +- (25.0,18.1)
-  (66.7,Qutebrowser) +- (21.3,16.1)
-  (71.4,Flipt) +- (21.4,14.8)
-  (72.7,Element) +- (20.8,14.2)
-  (76.2,Navidrome) +- (21.3,13.2)
-  (76.2,Teleport) +- (21.3,13.2)
-  (81.8,OpenLibrary) +- (20.3,10.9)
-  (83.3,Ansible) +- (22.5,10.9)
-  (84.2,Vuls) +- (21.8,10.3)
-  (85.0,ProtonMail) +- (21.0,9.8)
-};
-\draw[dashed, ocoDark!70, line width=0.6pt] (axis cs:72.6,NodeBB) -- (axis cs:72.6,ProtonMail);
-\node[font=\scriptsize\itshape, text=ocoDark!75, anchor=south west] at (axis cs:73,ProtonMail) {overall 72.6\%};
-\end{axis}
+\begin{tikzpicture}[x=0.1cm,y=0.56cm]
+\node[anchor=west,font=\large\ttfamily\bfseries] at (-9,17.1) {PERFORMANCE CONTEXT};
+\newcommand{\leaderrow}[8]{%
+  \node[minimum width=0.43cm,minimum height=0.38cm,fill=ocoDark,text=white,font=\footnotesize\bfseries] at (-6,#1+0.10) {#2};
+  \node[anchor=west,font=\footnotesize\ttfamily] at (0,#1+0.32) {#3};
+  \node[anchor=east,font=\footnotesize\ttfamily] at (80,#1+0.32) {#8};
+  \draw[fill=ocoGray!55,draw=none] (0,#1-0.21) rectangle (80,#1-0.02);
+  \draw[fill=#7!72,draw=none] (0,#1-0.21) rectangle (#4,#1-0.02);
+  \draw[black,line width=0.85pt] (#5,#1-0.115) -- (#6,#1-0.115);
+  \draw[black,line width=0.85pt] (#5,#1-0.24) -- (#5,#1+0.01);
+  \draw[black,line width=0.85pt] (#6,#1-0.24) -- (#6,#1+0.01);
+}
+\leaderrow{16}{P}{OCO / Qwen3.6-27B pilot}{72.6}{66.4}{78.1}{ocoTeal}{72.6 [66.4, 78.1]}
+\leaderrow{15}{1}{gpt-5.4 (xHigh)*}{59.10}{55.54}{62.66}{ocoTeal}{59.10 $\pm$3.56}
+\leaderrow{14}{1}{Muse Spark* NEW}{55.00}{51.40}{58.60}{scaleSky}{55.00 $\pm$3.60}
+\leaderrow{13}{2}{claude-opus-4-6 (thinking)*}{51.90}{48.29}{55.51}{scaleSalmon}{51.90 $\pm$3.61}
+\leaderrow{12}{3}{gemini-3.1-pro (thinking)*}{46.10}{42.50}{49.70}{scalePurple}{46.10 $\pm$3.60}
+\leaderrow{11}{3}{claude-opus-4-5-20251101}{45.89}{42.29}{49.49}{scaleSalmon}{45.89 $\pm$3.60}
+\leaderrow{10}{4}{claude-4-5-Sonnet}{43.60}{40.00}{47.20}{scaleSalmon}{43.60 $\pm$3.60}
+\leaderrow{9}{4}{gemini-3-pro-preview}{43.30}{39.70}{46.90}{scalePurple}{43.30 $\pm$3.60}
+\leaderrow{8}{4}{claude-4-Sonnet}{42.70}{39.11}{46.29}{scaleSalmon}{42.70 $\pm$3.59}
+\leaderrow{7}{4}{gpt-5-2025-08-07 (High)}{41.78}{38.29}{45.27}{ocoTeal}{41.78 $\pm$3.49}
+\leaderrow{6}{4}{gpt-5.2-codex}{41.04}{37.47}{44.61}{ocoTeal}{41.04 $\pm$3.57}
+\leaderrow{5}{4}{claude-4-5-haiku}{39.45}{35.90}{43.00}{scaleSalmon}{39.45 $\pm$3.55}
+\leaderrow{4}{6}{qwen3-coder-480b-a35b}{38.70}{35.15}{42.25}{scalePink}{38.70 $\pm$3.55}
+\leaderrow{3}{6}{minimax-2.1}{36.81}{33.26}{40.36}{ocoMute}{36.81 $\pm$3.55}
+\leaderrow{2}{10}{gemini-3-flash}{34.63}{31.08}{38.18}{scalePurple}{34.63 $\pm$3.55}
+\leaderrow{1}{15}{gpt-5.2}{29.94}{27.79}{32.09}{ocoTeal}{29.94 $\pm$2.15}
+\leaderrow{0}{15}{kimi-k2-instruct}{27.67}{24.42}{30.92}{ocoMute}{27.67 $\pm$3.25}
+\end{tikzpicture}
+\caption{Published SWE-bench Pro performance context from Scale Labs values supplied for this report, with OCO's seeded-subset pilot added as a clearly labeled pilot row. The OCO row is not a leaderboard submission because it uses the seeded-subset submitted-patch denominator; it shows the magnitude of the engineering result against public full-benchmark scores. Whiskers show the reported uncertainty intervals.}
+\label{fig:leaderboard}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=0.086cm,y=0.56cm]
+\newcommand{\repobar}[6]{%
+  \node[anchor=east,font=\small] at (-3,#1) {#2 \scriptsize #3};
+  \draw[fill=ocoGray!65,draw=none] (0,#1-0.13) rectangle (100,#1+0.13);
+  \draw[fill=ocoTeal!62,draw=ocoTeal!85!black,line width=0.25pt] (0,#1-0.13) rectangle (#4,#1+0.13);
+  \draw[black,line width=0.75pt] (#5,#1) -- (#6,#1);
+  \draw[black,line width=0.75pt] (#5,#1-0.13) -- (#5,#1+0.13);
+  \draw[black,line width=0.75pt] (#6,#1-0.13) -- (#6,#1+0.13);
+}
+\foreach \x in {0,20,40,60,80,100} {
+  \draw[ocoGray!95,line width=0.35pt] (\x,-0.55) -- (\x,10.6);
+  \node[font=\scriptsize,anchor=north] at (\x,-0.78) {\x};
+}
+\draw[ocoDark!60,line width=0.5pt] (0,-0.55) -- (100,-0.55);
+\draw[ocoDark!60,line width=0.5pt] (0,-0.55) -- (0,10.55);
+\draw[dashed,ocoDark!70,line width=0.65pt] (72.6,0) -- (72.6,10);
+
+\repobar{10}{ProtonMail}{85.0\% (17/20)}{85.0}{64.0}{94.8}
+\repobar{9}{Vuls}{84.2\% (16/19)}{84.2}{62.4}{94.5}
+\repobar{8}{Ansible}{83.3\% (15/18)}{83.3}{60.8}{94.2}
+\repobar{7}{OpenLibrary}{81.8\% (18/22)}{81.8}{61.5}{92.7}
+\repobar{6}{Teleport}{76.2\% (16/21)}{76.2}{54.9}{89.4}
+\repobar{5}{Navidrome}{76.2\% (16/21)}{76.2}{54.9}{89.4}
+\repobar{4}{Element}{72.7\% (16/22)}{72.7}{51.9}{86.9}
+\repobar{3}{Flipt}{71.4\% (15/21)}{71.4}{50.0}{86.2}
+\repobar{2}{Qutebrowser}{66.7\% (14/21)}{66.7}{45.4}{82.8}
+\repobar{1}{Tutanota}{66.7\% (10/15)}{66.7}{41.7}{84.8}
+\repobar{0}{NodeBB}{39.1\% (9/23)}{39.1}{22.2}{59.2}
+
+\node[font=\scriptsize\itshape,anchor=south west,text=ocoDark!75] at (73.3,10.25) {overall pilot 72.6\%};
+\node[font=\small,anchor=north] at (50,-1.35) {Pilot pass rate (\%) with Wilson 95\% CI};
 \end{tikzpicture}
 \caption{Per-repository pilot pass rate (162/223 submitted clean patches, current-evaluator replay), sorted by point estimate. Whiskers are Wilson 95\% CIs; per-repo $n=15$--$23$ makes intervals wide. NodeBB sits well below the rest of the field. The dashed line marks the overall pilot rate.}
 \label{fig:perrepo}
@@ -261,57 +265,27 @@ Two passing rows were inspected against archived OCO histories. A Navidrome task
 
 A later full 731-task generation run changed several variables at once: H200 hardware, FP8 served checkpoint, MTP-4 speculative decoding, and a new standalone controller path. It generated non-empty patches for all 731 public-split tasks. Official Modal evaluation produced \textbf{208 pass, 310 fail, 213 empty-test outputs}: 28.45\% strict over the full split. Figure~\ref{fig:profiles} shows the contrast directly.
 
-\begin{figure}[ht]
+\begin{figure}[H]
 \centering
-\begin{tikzpicture}
-\begin{axis}[
-  xbar,
-  width=0.92\linewidth,
-  height=5.2cm,
-  bar width=22pt,
-  xmin=0, xmax=110,
-  xlabel={\small Strict pass rate (\%) through the same Modal/SWE-bench Pro evaluator},
-  symbolic y coords={h200,b200},
-  ytick={h200,b200},
-  yticklabels={{H200/FP8/MTP-4 (208/731)},{B200/FP8/non-MTP (162/223)}},
-  yticklabel style={align=right, font=\small},
-  nodes near coords={\pgfmathprintnumber[fixed,precision=1,zerofill]{\pgfplotspointmeta}\%},
-  nodes near coords align={horizontal},
-  every node near coord/.append style={xshift=24pt, font=\small\bfseries, text=black},
-  axis y line*=left,
-  axis x line*=bottom,
-  xtick={0,20,40,60,80,100},
-  enlarge y limits=0.5,
-  major grid style={line width=0.1pt,draw=gray!25},
-  xmajorgrids,
-  tick label style={font=\small},
-  label style={font=\small}
-]
-\addplot[
-  xbar,
-  draw=ocoOrange!85!black,
-  line width=0.4pt,
-  fill=ocoOrange!65,
-  error bars/.cd,
-  x dir=both, x explicit,
-  error bar style={black, line width=0.7pt},
-  error mark options={mark size=3pt, line width=0.7pt}
-] coordinates {
-  (28.45,h200) +- (3.15,3.38)
-};
-\addplot[
-  xbar,
-  draw=ocoTeal!90!black,
-  line width=0.4pt,
-  fill=ocoTeal!60,
-  error bars/.cd,
-  x dir=both, x explicit,
-  error bar style={black, line width=0.7pt},
-  error mark options={mark size=3pt, line width=0.7pt}
-] coordinates {
-  (72.6,b200) +- (6.2,5.5)
-};
-\end{axis}
+\begin{tikzpicture}[x=0.088cm,y=0.8cm]
+\newcommand{\profilebar}[7]{%
+  \node[anchor=east,font=\small] at (-3,#1) {#2};
+  \node[anchor=west,font=\small\bfseries] at (102,#1) {#3};
+  \draw[fill=ocoGray!62,draw=none] (0,#1-0.18) rectangle (100,#1+0.18);
+  \draw[fill=#7!70,draw=#7!85!black,line width=0.25pt] (0,#1-0.18) rectangle (#4,#1+0.18);
+  \draw[black,line width=0.85pt] (#5,#1) -- (#6,#1);
+  \draw[black,line width=0.85pt] (#5,#1-0.2) -- (#5,#1+0.2);
+  \draw[black,line width=0.85pt] (#6,#1-0.2) -- (#6,#1+0.2);
+}
+\foreach \x in {0,20,40,60,80,100} {
+  \draw[ocoGray!95,line width=0.35pt] (\x,-0.65) -- (\x,1.65);
+  \node[font=\scriptsize,anchor=north] at (\x,-0.85) {\x};
+}
+\draw[ocoDark!60,line width=0.5pt] (0,-0.65) -- (100,-0.65);
+\draw[ocoDark!60,line width=0.5pt] (0,-0.65) -- (0,1.65);
+\profilebar{1}{B200/FP8/non-MTP \scriptsize(162/223)}{72.6\%}{72.6}{66.4}{78.1}{ocoTeal}
+\profilebar{0}{H200/FP8/MTP-4 \scriptsize(208/731)}{28.5\%}{28.45}{25.3}{31.8}{ocoOrange}
+\node[font=\small,anchor=north] at (50,-1.35) {Strict pass rate (\%) through the same Modal/SWE-bench Pro evaluator};
 \end{tikzpicture}
 \caption{Same model family, same evaluator, two serving/controller profiles. Bars are strict pass rates; whiskers are Wilson 95\% CIs. The intervals do not overlap: the difference is real, but the H200 run changed hardware, speculative decoding, and controller simultaneously, so it does not isolate a single causal variable.}
 \label{fig:profiles}
