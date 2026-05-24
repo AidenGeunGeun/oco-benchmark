@@ -88,7 +88,7 @@ OCO extends opencode with a Project Manager $\rightarrow$ Orchestrator $\rightar
 
 \node[specialist, below=1.1cm of pm.south east, xshift=-0.0cm] (inv) {\textbf{Investigator}\\\footnotesize source-level evidence};
 \node[specialist, below=1.1cm of orch.south east, xshift=0.0cm] (aud) {\textbf{Auditor}\\\footnotesize review, risk, regression};
-\node[font=\footnotesize, text=ocoMute, below=0.35cm of $(inv)!0.5!(aud)$] {specialists are called on demand; they support the main flow rather than owning it};
+\node[font=\footnotesize, text=ocoMute, below=0.65cm of $(inv)!0.5!(aud)$] {specialists are called on demand; they support the main flow rather than owning it};
 \end{tikzpicture}
 \caption{OCO workflow. PM owns task framing; Orchestrator owns implementation. Investigator and Auditor are support roles rather than extra implementation owners.}
 \label{fig:arch}
@@ -314,7 +314,7 @@ Legacy filenames and some later notes refer to the positive replay bundle as ``o
 \section{Threats to Validity}
 
 \paragraph{No matched baseline.}
-The positive pilot lacks a same-model, same-serving mini-SWE-agent or SWE-agent baseline on the exact seeded subset. It is strongest as an engineering pilot and artifact-backed case study.
+The positive pilot lacks a same-model, same-serving mini-SWE-agent or SWE-agent baseline on the exact seeded subset. It is strongest as an engineering pilot and artifact-backed case study. Follow-up studies should run matched baselines and serving-profile A/B tests when budget or compute is available.
 
 \paragraph{Subset and non-submission.}
 The 250-task subset was deterministic and repository-balanced, but it was still a subset. Only 223 selected rows became submitted clean patch rows. The strict 223-row score measures submitted patch quality; the 250-row conservative score exposes the cost of non-submission.
