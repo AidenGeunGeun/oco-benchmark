@@ -1,6 +1,6 @@
 # Related Work and Positioning Memo
 
-This memo converts the deep-research findings into a practical positioning guide for the technical report. Citations still need to be converted into BibTeX before arXiv submission.
+This memo converts the research findings into a practical positioning guide for the technical report. The paper bibliography now contains the core cited works; this memo remains a positioning note rather than the authoritative citation list.
 
 ## Core positioning
 

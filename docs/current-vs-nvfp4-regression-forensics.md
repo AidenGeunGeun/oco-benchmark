@@ -4,7 +4,7 @@ Date: 2026-05-23
 
 ## Why this note exists
 
-The final 731-task H200/FP8/MTP-4 run evaluated far below the earlier B200 seeded-250 positive pilot. The archived final methodology note for that 223-row submitted positive bundle records `Qwen/Qwen3.6-27B-FP8`, B200, non-MTP; earlier B200/NVFP4 experiments existed and some legacy replay names still say `old-nvfp4`, but this note follows the archived final methodology record. The raw headline from the current full run was 208 pass / 310 fail / 213 empty-test outputs over 731, i.e. 28.45% strict. The prior seeded-250 pilot had 158 pass / 46 fail / 19 unknown across 223 evaluated clean patches, i.e. 70.9% strict over evaluated clean rows and 63.2% vs the selected 250 denominator.
+The final 731-task H200/FP8/MTP-4 run evaluated far below the earlier B200 seeded-250 positive pilot. The archived final methodology note for that 223-row submitted positive bundle records `Qwen/Qwen3.6-27B-FP8`, B200, non-MTP; earlier B200/NVFP4 experiments existed and some legacy replay names still say `old-nvfp4`, but this note follows the archived final methodology record. The current-evaluator replay of the B200 submitted bundle produced 162 pass / 43 fail / 18 empty-test outputs over 223 rows, i.e. 72.6% strict over submitted rows and 64.8% against the full seeded-250 denominator. The later H200 full run produced 208 pass / 310 fail / 213 empty-test outputs over 731 rows, i.e. 28.45% strict. The original archived B200 tally was 158 pass / 46 fail / 19 unknown over 223 rows and is retained as historical context, but the current-evaluator replay numbers are the public comparison point used by this repository.
 
 This gap is too large to treat as ordinary sampling noise. A direct old-vs-current comparison on the same old evaluated task IDs showed that 100 old passes regressed in the current run: 49 became current fail and 51 became current empty-test output. Only 58 old passes stayed pass.
 
@@ -101,14 +101,14 @@ This supports the broader methodology caveat: the current full run exercised OCO
 
 The current 731 result is still valuable, but as a negative/diagnostic systems result, not as the primary OCO-lifts-Qwen headline. The stronger story is now:
 
-1. Earlier B200 seeded-250 pilot showed a surprisingly high result and deserves preservation as a pilot finding.
+1. The B200 seeded-250 pilot showed a surprisingly high result and deserves preservation as a pilot finding.
 2. The later full-run controller profile regressed sharply.
 3. Forensics show the regression is real patch-quality degradation, not just evaluator artifact.
-4. Before any publication-grade full 731 claim, the benchmark needs a controlled A/B between the old working profile and the new controller profile, ideally on the same first-250 slice first.
+4. Before any publication-grade full 731 claim, the benchmark needs a controlled A/B between the B200 working profile and the newer controller profile, ideally on the same first-250 slice first.
 
-After replaying the old B200 patch bundle through the current evaluator path, the old result reproduced at roughly the same level (~69.5% during replay vs archived 70.9% strict over 223 evaluated clean patches; later exact replay parse was 162/223 = 72.6%). This clears the current Modal/evaluator path as the main cause of the collapse. The low H200/FP8/MTP-4 full-run score is therefore a generation-profile regression, not an evaluation artifact.
+After replaying the B200 patch bundle through the current evaluator path, the accepted replay result was 162/223 = 72.6% strict over submitted rows. This is consistent with the archived result scale while using the same evaluator path as the later H200 run. It clears the current Modal/evaluator path as the main cause of the collapse. The low H200/FP8/MTP-4 full-run score is therefore a generation-profile regression, not an evaluation artifact.
 
-For public/headline framing, use the old B200 seeded-250 pilot as the positive benchmark result and keep the H200/FP8/MTP-4 run as an internal diagnostic/lesson-learned. Do not present the H200/FP8/MTP-4 score as the headline OCO result unless it is explicitly framed as a failed serving-profile experiment.
+For public/headline framing, use the B200 seeded-250 pilot as the positive benchmark result and present the H200/FP8/MTP-4 run as a negative deployment-profile case study. Do not present the H200/FP8/MTP-4 score as the headline OCO result unless it is explicitly framed as a failed serving-profile experiment.
 
 The agent-perspective comparison found broadly similar task framing and top-level model/agent target, but not exact equivalence: the current standalone controller changed subagent availability, prompt overlays, and some request-option placement. Still, the old patch replay succeeding under the current evaluator means the most important remaining uncertainty is generation behavior, especially the serving/model profile and controller prompt/tool surface.
 

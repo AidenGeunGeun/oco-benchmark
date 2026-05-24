@@ -17,7 +17,7 @@ Headline:
 | Configuration | Score |
 |---|---|
 | Qwen3.6-27B alone, Qwen's scaffold (model card) | 53.5 |
-| Qwen3.6-27B-FP8 inside OCO (this run) | **TBD** |
+| Qwen3.6-27B-FP8 inside OCO (this run) | To be measured by this plan |
 
 The result shows OCO + Qwen3.6-27B-FP8 relative to Qwen's published scaffold score on the same benchmark. It does **not** isolate harness causality — different scaffold, different sampling, quantized weights all contribute. It's a direction-of-effect result, not a controlled experiment, and we report it that way.
 

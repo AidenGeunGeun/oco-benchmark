@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
+  <title id="title">Per-repository pilot pass rates</title>
+  <desc id="desc">Horizontal bar chart showing OCO pilot pass rates by repository with Wilson confidence intervals.</desc>
+  <style>
+    .title{font:700 21px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;fill:#222}
+    .label{font:14px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;fill:#222;text-anchor:end}
+    .axis{font:12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;fill:#666;text-anchor:middle}
+    .note{font:12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;fill:#666}
+    .track{fill:#ededed}.bar{fill:#63C3BA;stroke:#3b8f88;stroke-width:.5}.ci{stroke:#111;stroke-width:2}
+  </style>
+  <rect width="960" height="560" fill="#fff"/>
+  <text x="32" y="40" class="title">PER-REPOSITORY PILOT PASS RATE</text>
+  <text x="32" y="63" class="note">Current-evaluator replay of 223 submitted clean patches. Dashed line marks overall 72.6%.</text>
+  <g transform="translate(182,92)">
+    <line x1="0" y1="392" x2="700" y2="392" stroke="#aaa"/>
+    <line x1="0" y1="0" x2="0" y2="392" stroke="#aaa"/>
+    <line x1="508" y1="0" x2="508" y2="376" stroke="#222" stroke-dasharray="5 4" stroke-width="1.4"/>
+    <text x="515" y="-8" class="note">overall 72.6%</text>
+    <g stroke="#f0f0f0" stroke-width="1">
+      <line x1="140" y1="0" x2="140" y2="392"/><line x1="280" y1="0" x2="280" y2="392"/><line x1="420" y1="0" x2="420" y2="392"/><line x1="560" y1="0" x2="560" y2="392"/><line x1="700" y1="0" x2="700" y2="392"/>
+    </g>
+    <g transform="translate(0,0)"><text x="-12" y="15" class="label">ProtonMail 85.0% (17/20)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="595" height="14" class="bar"/><line x1="448" y1="11" x2="664" y2="11" class="ci"/><line x1="448" y1="3" x2="448" y2="19" class="ci"/><line x1="664" y1="3" x2="664" y2="19" class="ci"/></g>
+    <g transform="translate(0,35)"><text x="-12" y="15" class="label">Vuls 84.2% (16/19)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="589" height="14" class="bar"/><line x1="437" y1="11" x2="662" y2="11" class="ci"/><line x1="437" y1="3" x2="437" y2="19" class="ci"/><line x1="662" y1="3" x2="662" y2="19" class="ci"/></g>
+    <g transform="translate(0,70)"><text x="-12" y="15" class="label">Ansible 83.3% (15/18)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="583" height="14" class="bar"/><line x1="426" y1="11" x2="659" y2="11" class="ci"/><line x1="426" y1="3" x2="426" y2="19" class="ci"/><line x1="659" y1="3" x2="659" y2="19" class="ci"/></g>
+    <g transform="translate(0,105)"><text x="-12" y="15" class="label">OpenLibrary 81.8% (18/22)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="573" height="14" class="bar"/><line x1="431" y1="11" x2="649" y2="11" class="ci"/><line x1="431" y1="3" x2="431" y2="19" class="ci"/><line x1="649" y1="3" x2="649" y2="19" class="ci"/></g>
+    <g transform="translate(0,140)"><text x="-12" y="15" class="label">Teleport 76.2% (16/21)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="533" height="14" class="bar"/><line x1="384" y1="11" x2="626" y2="11" class="ci"/><line x1="384" y1="3" x2="384" y2="19" class="ci"/><line x1="626" y1="3" x2="626" y2="19" class="ci"/></g>
+    <g transform="translate(0,175)"><text x="-12" y="15" class="label">Navidrome 76.2% (16/21)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="533" height="14" class="bar"/><line x1="384" y1="11" x2="626" y2="11" class="ci"/><line x1="384" y1="3" x2="384" y2="19" class="ci"/><line x1="626" y1="3" x2="626" y2="19" class="ci"/></g>
+    <g transform="translate(0,210)"><text x="-12" y="15" class="label">Element 72.7% (16/22)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="509" height="14" class="bar"/><line x1="363" y1="11" x2="608" y2="11" class="ci"/><line x1="363" y1="3" x2="363" y2="19" class="ci"/><line x1="608" y1="3" x2="608" y2="19" class="ci"/></g>
+    <g transform="translate(0,245)"><text x="-12" y="15" class="label">Flipt 71.4% (15/21)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="500" height="14" class="bar"/><line x1="350" y1="11" x2="603" y2="11" class="ci"/><line x1="350" y1="3" x2="350" y2="19" class="ci"/><line x1="603" y1="3" x2="603" y2="19" class="ci"/></g>
+    <g transform="translate(0,280)"><text x="-12" y="15" class="label">Qutebrowser 66.7% (14/21)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="467" height="14" class="bar"/><line x1="318" y1="11" x2="580" y2="11" class="ci"/><line x1="318" y1="3" x2="318" y2="19" class="ci"/><line x1="580" y1="3" x2="580" y2="19" class="ci"/></g>
+    <g transform="translate(0,315)"><text x="-12" y="15" class="label">Tutanota 66.7% (10/15)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="467" height="14" class="bar"/><line x1="292" y1="11" x2="594" y2="11" class="ci"/><line x1="292" y1="3" x2="292" y2="19" class="ci"/><line x1="594" y1="3" x2="594" y2="19" class="ci"/></g>
+    <g transform="translate(0,350)"><text x="-12" y="15" class="label">NodeBB 39.1% (9/23)</text><rect x="0" y="4" width="700" height="14" class="track"/><rect x="0" y="4" width="274" height="14" class="bar"/><line x1="155" y1="11" x2="414" y2="11" class="ci"/><line x1="155" y1="3" x2="155" y2="19" class="ci"/><line x1="414" y1="3" x2="414" y2="19" class="ci"/></g>
+    <text x="0" y="418" class="axis">0</text><text x="140" y="418" class="axis">20</text><text x="280" y="418" class="axis">40</text><text x="420" y="418" class="axis">60</text><text x="560" y="418" class="axis">80</text><text x="700" y="418" class="axis">100</text>
+    <text x="350" y="455" class="axis">Pilot pass rate (%) with Wilson 95% CI</text>
+  </g>
+</svg>

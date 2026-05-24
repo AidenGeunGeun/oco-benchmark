@@ -30,7 +30,7 @@ Definitions:
 - **Real `tests: []` non-resolution:** evaluator output has `tests: []`, but logs show the patch failed by build, import, runtime, or test-collection behavior caused by the patch or repo state. These remain failures.
 - **Evaluator artifact:** evaluator did not meaningfully test the patch due environment/tooling setup issues such as missing browser/toolchain/helper import problems. These are excluded only in the artifact-adjusted diagnostic denominator.
 
-Unknown investigation on the replayed 223 rows found no hidden wins. The empty-test rows were classified as mostly real non-resolutions, with a small number of evaluator artifacts.
+Unknown investigation on the replayed 223 rows found no additional resolved tasks. The empty-test rows were classified as mostly real non-resolutions, with a small number of evaluator artifacts.
 
 ## Seeded 250-task subset construction
 
