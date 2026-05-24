@@ -23,7 +23,7 @@
 \definecolor{scalePurple}{HTML}{5F8FD3}
 \definecolor{scalePink}{HTML}{D86BB0}
 
-\title{Harness and Serving-Profile Effects on SWE-bench Pro:\\
+\title{Harness Amplification on SWE-bench Pro:\\
 An Evidence-First Case Study with OpenCodeOrchestra and Qwen3.6-27B}
 \author{Aiden Kim}
 \date{Technical report --- May 2026}
@@ -32,23 +32,25 @@ An Evidence-First Case Study with OpenCodeOrchestra and Qwen3.6-27B}
 \maketitle
 
 \begin{abstract}
-Repository-level coding-agent scores measure complete runtime systems, not model weights alone. This report studies OpenCodeOrchestra (OCO), an opencode-based harness organized around a Project Manager $\rightarrow$ Orchestrator $\rightarrow$ specialist-agent workflow, on SWE-bench Pro with open-weight Qwen3.6-27B. A seeded-subset pilot served on a non-speculative Runpod B200 profile resolved 162/223 submitted patch rows (72.6\% strict, Wilson 95\% CI 66.4--78.1\%). A later 731-task H200 FP8 + MTP-4 run with a different controller collapsed to 28.45\% strict; replaying the B200 patches through the same evaluator reproduced the high result. The systems lesson is direct: faster serving is not automatically better serving for long-horizon coding agents.
+How much can a harness amplify an accessible open-weight model on a public repository-repair benchmark? This report studies OpenCodeOrchestra (OCO), an opencode-based Project Manager $\rightarrow$ Orchestrator $\rightarrow$ specialist-agent workflow, on SWE-bench Pro with Qwen3.6-27B. In a seeded-subset pilot, OCO resolved 162/223 submitted patch rows: 72.6\% strict (Wilson 95\% CI 66.4--78.1\%). The result is not a leaderboard claim; it is evidence that harness design can materially change what a not-frontier model achieves. A later full-run deployment collapse is used as a systems lesson: harness, controller, and serving choices must be evaluated at task level, not only by throughput.
 \end{abstract}
 
 \section{Introduction}
 
-A repository-level coding agent must inspect a codebase, interpret an issue, edit source, reason about tests, and submit a patch accepted by an external evaluator. The surrounding runtime---prompt hierarchy, tools, permissions, retry policy, patch extraction, and model-serving stack---changes the outcome.
+A repository-level coding agent must inspect a codebase, interpret an issue, edit source, reason about tests, and submit a patch accepted by an external evaluator. The model matters, but it is only one component. The surrounding harness---prompt hierarchy, role decomposition, tools, permissions, review loops, retry policy, patch extraction, and model-serving stack---changes what the same model can accomplish.
 
-This report studies that systems problem through OpenCodeOrchestra (OCO), a durable orchestration harness for software-engineering tasks. The contribution is an audited artifact trail showing (i) a strong seeded-subset pilot under an archived B200 non-speculative profile, (ii) transparent denominator accounting, and (iii) a later deployment-profile collapse caused by worse generated patches rather than evaluator failure.
+This report studies harness amplification through OpenCodeOrchestra (OCO), a durable orchestration runtime for software-engineering tasks. The central question is not whether Qwen3.6-27B is a frontier model. It is how far a structured harness can push an accessible model on a public industrial benchmark, and what evidence is needed to study that effect responsibly.
+
+The artifact trail shows (i) a strong seeded-subset pilot under an archived B200 non-speculative profile, (ii) transparent denominator accounting, and (iii) a later deployment-profile collapse caused by worse generated patches rather than evaluator failure. The collapse is part of the harness story: if the harness is the treatment, serving and controller changes are treatment changes too.
 
 The rule used throughout is: source artifacts are the evidence. Chat transcripts are pointers only. Load-bearing claims are tied to checked-in source, archived runner source, manifests, evaluator outputs, replay roots, and forensic notes.
 
 \paragraph{Contributions.}
 \begin{enumerate}
-  \item A deterministic, repository-balanced seeded-subset pilot on SWE-bench Pro with transparent denominators.
-  \item An OCO harness configuration where PM-to-Orchestrator delegation was broadly observed and Auditor participation was available but not consistently enforced.
+  \item A deterministic, repository-balanced seeded-subset pilot testing how far an OCO-style harness can push accessible Qwen3.6-27B on SWE-bench Pro.
+  \item A measured OCO harness configuration where PM-to-Orchestrator delegation was broadly observed and Auditor participation was available but not consistently enforced.
   \item Validation of the positive patch bundle through replay on the later Modal/evaluator stack and manual inspection of representative passing histories.
-  \item A negative serving/controller-profile result: token-throughput wins and full-patch generation do not guarantee task-level coding-agent quality.
+  \item A deployment-profile failure showing that harness changes must be judged by task outcomes, not only by token-throughput or patch-generation completeness.
 \end{enumerate}
 
 \section{Background and Related Work}
@@ -65,8 +67,8 @@ MetaGPT and ChatDev organized software work into teams of named roles \cite{hong
 \paragraph{Reviewer, verifier, and audit loops.}
 Verifier and reviewer loops can improve code-generation systems when enforced and measured. OCO includes an Auditor concept; the positive bundle contains an audit-observed stratum. In this pilot, audit is a harness capability and observability variable; the measured treatment is the broader OCO runtime.
 
-\paragraph{Serving-profile sensitivity.}
-Inference serving is an underreported variable in coding-agent studies. Quantization, KV-cache format, context length, batching, parser behavior, and speculative decoding can change more than throughput. A direct server-throughput A/B favored an H200 FP8 + MTP-4 profile, but downstream full-task generation quality collapsed. Because old patches replayed successfully through the same evaluator while new patches failed by ordinary code-quality mechanisms, the case study motivates task-level quality A/B tests for serving profiles.
+\paragraph{Harness and serving-profile sensitivity.}
+Harness studies should treat serving as part of the runtime, not as a background detail. Quantization, KV-cache format, context length, batching, parser behavior, and speculative decoding can change more than throughput. A direct server-throughput A/B favored an H200 FP8 + MTP-4 profile, but downstream full-task generation quality collapsed. Because old patches replayed successfully through the same evaluator while new patches failed by ordinary code-quality mechanisms, the case study motivates task-level quality A/B tests for the whole harness stack.
 
 \section{System Under Measurement: OpenCodeOrchestra}
 
@@ -261,7 +263,7 @@ Manual inspection of the 18 empty-test replay rows found no hidden wins. Four we
 \paragraph{Representative passing trajectories.}
 Two passing rows were inspected against archived OCO histories. A Navidrome task showed PM, Investigator, and Orchestrator activity; the patch fixed deterministic hashing behavior and replayed tests passed. An OpenLibrary task showed PM investigation, spec writing, Orchestrator delegation, vendor-language serialization edits, and 34 relevant replayed tests passing. These witnesses ground the result in real task-relevant edits rather than bookkeeping artifacts.
 
-\section{Negative Result: Confounded Deployment-Profile Collapse}
+\section{Harness Sensitivity: Deployment-Profile Collapse}
 
 A later full 731-task generation run changed several variables at once: H200 hardware, FP8 served checkpoint, MTP-4 speculative decoding, and a new standalone controller path. It generated non-empty patches for all 731 public-split tasks. Official Modal evaluation produced \textbf{208 pass, 310 fail, 213 empty-test outputs}: 28.45\% strict over the full split. Figure~\ref{fig:profiles} shows the contrast directly.
 
@@ -294,7 +296,7 @@ A later full 731-task generation run changed several variables at once: H200 har
 The low H200 score initially raised the possibility of evaluator or bundle corruption. Three checks pointed back to generation quality: bundle validation found no duplicate, empty-patch, or raw/patch ID mismatch; raw-vs-sanitized evaluation behaved similarly on an unknown-heavy sample; and replaying the earlier B200 patch bundle through the same current evaluator reproduced the high result.
 
 \paragraph{Patch-level witnesses.}
-Five old-pass/current-regressed witnesses were inspected patch-by-patch. The current patches failed by ordinary code-quality mechanisms: Flipt had incompatible config/exporter symbols; Navidrome left an expected helper undefined; Vuls missed macOS constants and scanner wiring; Teleport invented a different matcher API; and OpenLibrary changed language serialization into the wrong representation. The H200 FP8 + MTP-4 run is a failed deployment-profile experiment. The actionable lesson: throughput wins are not enough; long-horizon coding agents need task-level quality A/B tests before serving changes are trusted.
+Five old-pass/current-regressed witnesses were inspected patch-by-patch. The current patches failed by ordinary code-quality mechanisms: Flipt had incompatible config/exporter symbols; Navidrome left an expected helper undefined; Vuls missed macOS constants and scanner wiring; Teleport invented a different matcher API; and OpenLibrary changed language serialization into the wrong representation. The H200 FP8 + MTP-4 run is a failed deployment-profile experiment. The actionable lesson for harness research is direct: measure the workflow at task level before trusting any change that makes the agent faster, cheaper, or easier to run.
 
 \section{Artifact Availability and Reproducibility}
 
@@ -325,6 +327,9 @@ Manual classification of empty-test outputs can introduce judgment. This is why 
 \paragraph{Audit loop not enforced.}
 OCO's Auditor was available but most clean patches did not show an observed Auditor pass. Audit is a runtime feature in this report, not the measured treatment.
 
+\paragraph{Future harness ablations.}
+The next study should isolate the harness contribution directly when compute is available. Natural variants are: Orchestrator-only repair; PM $\rightarrow$ Orchestrator without an Auditor; PM $\rightarrow$ Orchestrator with a strict required Auditor pass; and PM-edit plus Auditor-review, which approximates the PM-edit-heavy paths observed in this pilot. These ablations would turn the current engineering case study into a cleaner measurement of which harness roles produce the gain.
+
 \paragraph{Serving/controller confounding.}
 The H200 collapse changed hardware, quantization/checkpoint, MTP, controller behavior, prompt/tool surface, and continuation policy. Replay and witness forensics isolate the collapse away from evaluator-only explanations but do not identify a single causal variable.
 
@@ -336,7 +341,7 @@ Some evidence currently lives in local external storage or pod-local paths. A re
 
 \section{Conclusion}
 
-OCO's seeded-subset pilot shows that a durable orchestration harness can produce strong repository-repair results with open-weight Qwen3.6-27B under an archived B200 non-speculative profile. The failed H200 full run makes the systems lesson sharper: faster serving is not automatically better serving. Harness design, serving profile, and evaluator evidence are first-class experimental variables in coding-agent research.
+OCO's seeded-subset pilot shows that a durable orchestration harness can produce strong repository-repair results with accessible Qwen3.6-27B under an archived B200 non-speculative profile. The larger research question is harness amplification: how much performance comes from the model, and how much comes from the workflow wrapped around it? The failed H200 full run makes the systems lesson sharper: harness design, serving profile, and evaluator evidence are first-class experimental variables in coding-agent research.
 
 \bibliographystyle{plain}
 \bibliography{references}
